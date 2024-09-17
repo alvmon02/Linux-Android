@@ -1,0 +1,23 @@
+/Exercise 1
+{
+	In linux file structure, errno.h & 
+	errno-base.h files can be found under
+	//usr/include/asm-generic
+
+	and as said in the guide, it is where error
+	macros are defined, which may be useful
+
+	As a negative value is returned from
+	a loading function in a Kernel module,
+	it seems it cannot be loaded, but execution
+	up until the return of the negative will
+	be done as normal.
+
+	Of course, since the module load returned
+	a non-Zero value, and over that,
+	a negative value, the module will never
+	be loaded, and thus, it will not be able
+	to be unloaded, since it was never part
+	of the Kernel, leaving 'rmmod' execution
+	useless
+}
