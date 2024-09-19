@@ -5,7 +5,7 @@
 #include <linux/string.h>
 #include <linux/vmalloc.h>
 #include <linux/uaccess.h>
-
+#include <linux/ftrace.h>
 
 
 MODULE_LICENSE("GPL");
@@ -36,7 +36,7 @@ static ssize_t clipboard_write(struct file *filp, const char __user *buf, size_t
 
   clipboard[len] = '\0'; /* Add the `\0' */  
   *off+=len;            /* Update the file pointer */
-  
+  trace_printk("Current value of clipboard: %s\n",clipboard);
   return len;
 }
 
