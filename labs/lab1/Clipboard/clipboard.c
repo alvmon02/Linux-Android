@@ -1,3 +1,4 @@
+
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
@@ -16,7 +17,9 @@ MODULE_AUTHOR("Juan Carlos Saez");
 static struct proc_dir_entry *proc_entry;
 static char *clipboard;  // Space for the "clipboard"
 
-static ssize_t clipboard_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
+	//Called at each time the /proc/clipboard is written into
+static ssize_t clipboard_write(struct file *filp, const char __user *buf, size_t len, loff_t *off)
+{
   int available_space = BUFFER_LENGTH-1;
   
   if ((*off) > 0) /* The application can write in this entry just once !! */
@@ -68,6 +71,9 @@ static const struct proc_ops proc_entry_fops = {
 int init_clipboard_module( void )
 {
   int ret = 0;
+
+  		//Allocation of memory space
+  		//BEWARE, it IS NOT a multi-usage clipboard
   clipboard = (char *)vmalloc( BUFFER_LENGTH );
 
   if (!clipboard) {
