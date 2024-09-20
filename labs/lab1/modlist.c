@@ -41,11 +41,11 @@ int modulo_Practica1_init(void)
 
 	if(proc_entry == NULL){
 		kfree("modlist");
-		printk("Modlist: No se pudo crear /proc/modlist entry\n");
+		printk(KERN_INFO,"Modlist: No se pudo crear /proc/modlist entry\n");
 		return -ENOMEM;
 	}
 	else
-		printk("Módulo modlist cargado con éxito"); 
+		printk("Módulo modlist cargado con éxito\n"); 
 
 	return 0;
 }
@@ -65,7 +65,9 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
 /* Función que se invoca cuando se descarga el módulo del kernel */
 void modulo_Practica1_clean(void)
 {
-        printk(KERN_INFO "Modulo LIN descargado. Adios kernel.\n");
+	remove_proc_entry("modlist", NULL);
+	kfree(modlist);
+	printk(KERN_INFO,"Modlist: Módulo extraído con éxito\n");
 }
 
 /* Declaración de funciones init y exit */
