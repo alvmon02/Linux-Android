@@ -162,13 +162,23 @@ void print_list_dmesg(struct list_head* list)
 /* Función que se invoca cuando se descarga el módulo del kernel */
 void modulo_Practica1_clean(void)
 {
+	struct list_item *item=NULL;
+	struct list_head *cur_node=NULL,
+					 *aux = NULL;
+
 	remove_proc_entry("modlist", NULL);
 
-	/*
-	while(!list_empty(&myList)){
-		list_del();
-
-	}*/
+	list_for_each_safe(cur_node, aux, &myList) {
+			//Elemento a eliminar
+		item = list_entry(cur_node, struct list_item, links);
+		printk(KERN_INFO "Element to be deleted: %i\n",item->data);
+		
+			//Eliminación del nodo respecto de la lista
+		list_del(cur_node);
+		
+			//Eliminación de la información del nodo de forma dinámica
+		kfree(item);
+	}
 	
 	printk(KERN_INFO "Módulo extraído con éxito\n");
 }
