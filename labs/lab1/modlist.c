@@ -47,8 +47,8 @@ LIST_HEAD(myList);
  * struct list_head myList; == LIST_HEAD(myList);
  */
 
- //TODO faltan las declaraciones de memoria con kmalloc, sólo está la creación del archivo modlist en /proc  
-/* Función que se invoca cuando se carga el módulo en el kernel */
+
+	/* Función que se invoca cuando se carga el módulo en el kernel */
 int modulo_Practica1_init(void)
 {
 
@@ -64,32 +64,46 @@ int modulo_Practica1_init(void)
 	return 0;
 }
 
-//TODO
+
 static ssize_t modlist_read(struct file* filp, char __user* buf, size_t len, loff_t* off)
 {
-
+	int bytesRead = 0;
 	char kbuf[MAX_LEN] = "";
-
 	char* dest = kbuf;
 
-	//Para depurar, saber si se añaden los elementos correctamente, se comprueban en dmesg
-		//Sorpresa, sí lo hacen, informagiaaa!!!
-	print_list_dmesg(&myList);
-	/*
-		//TODO Aplicar la escritura a panalla
-	list_for_each(cur_node, list) {
-	// item points to the structure wherein the links are embedded
-		item = list_entry(cur_node, struct list_item, links);
-		dast += printf( dest,"%i\n",item->data);
-	}*/
+	struct list_item* item = NULL;
+	struct list_head* cur_node = NULL;
 
-	if (copy_to_user(buf, dest, dest - kbuf))
+	//if (len > MAX_LEN)
+	//	return -ENOMEM;
+
+	 if ((*off) > 0) /* Tell the application that there is nothing left to read */
+	 	return bytesRead;
+
+
+		//Para depurar, saber si se añaden los elementos correctamente, se comprueban en dmesg
+	//print_list_dmesg(&myList);
+	
+		//Extracción de elementos para escritura a panalla
+	list_for_each(cur_node, &myList) {
+		item = list_entry(cur_node, struct list_item, links);
+		dest += sprintf( dest,"%d\n",item->data);
+	}
+
+
+	bytesRead = dest - kbuf;
+	
+	if(copy_to_user(buf, kbuf, bytesRead))
 		return -EFAULT;
 
-	return dest - kbuf;
+		/**Actualización de puntero de archivo para 
+		 *limitar la lectura a una sóla iteración */
+	(*off)+=bytesRead; 
+	
+	return bytesRead;
 }
 
-//TODO
+
 static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t len, loff_t* off)
 {
 
@@ -113,7 +127,7 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 
 	// add creo que se procesa así
 	if (sscanf(c, "add %i", &value)) {
-		printk(KERN_INFO "INTO THE ADD SECTION\n");
+		printk(KERN_INFO "Entrando en la parte ADD\n");
 
 		tempList = kmalloc(ITEM_SIZE, GFP_KERNEL);
 
@@ -122,11 +136,12 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 		INIT_LIST_HEAD(&tempList->links);
 
 		list_add_tail(&tempList->links, &myList);
+		printk(KERN_INFO "Parte ADD completada con éxito\n");
 	}
 	// remove borra todas las apariciones del elemento de la lista
 	else if (sscanf(c, "remove %d", &value)) {
 
-		printk(KERN_INFO "INTO THE REMOVE SECTION\n");
+		printk(KERN_INFO "Entrando en la sección REMOVE\n");
 
 		// Recorre la lista eliminando todas las apariciones del valor value
 		// y liberando la memoria 
@@ -139,11 +154,13 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 				kfree(actual);
 			}
 		}
+		
+		printk(KERN_INFO "Parte REMOVE completada con éxito\n");
 	}
 	// cleanup borra todos los elementos de la lista
 	else if (strcmp(c, "cleanup\n") == 0) {
 
-		printk(KERN_INFO "INTO THE CLEANUP SECTION\n");
+		printk(KERN_INFO "Entrando a la parte CLEANUP\n");
 
 		/* Recorre la lista y libera la memoria */
 		struct list_item* actual, * aux;
@@ -151,13 +168,15 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 			list_del(&actual->links);
 			kfree(actual);
 		}
+		
+		printk(KERN_INFO "Parte CLEANUP completada con éxito\n");
 	}
 	else
 		return -EINVAL;
 
 	return len;
 }
-//TODO Modificar a necesidad, está apenas copiado de las diapositivas
+
 void print_list_dmesg(struct list_head* list)
 {
 	struct list_item* item = NULL;
@@ -171,7 +190,7 @@ void print_list_dmesg(struct list_head* list)
 	list_for_each(cur_node, list) {
 		/* item points to the structure wherein the links are embedded */
 		item = list_entry(cur_node, struct list_item, links);
-		printk(KERN_INFO "%i\n", item->data);
+		printk(KERN_INFO "Elemento de la lista: %i\n", item->data);
 	}
 }
 
@@ -185,11 +204,10 @@ void modulo_Practica1_clean(void)
 
 	remove_proc_entry("modlist", NULL);
 
-<<<<<<< Updated upstream
+
 	list_for_each_safe(cur_node, aux, &myList) {
 			//Elemento a eliminar
 		item = list_entry(cur_node, struct list_item, links);
-		printk(KERN_INFO "Element to be deleted: %i\n",item->data);
 		
 			//Eliminación del nodo respecto de la lista
 		list_del(cur_node);
@@ -198,15 +216,6 @@ void modulo_Practica1_clean(void)
 		kfree(item);
 	}
 	
-=======
-	/* Recorre la lista y libera la memoria */
-	struct list_item* actual, * aux;
-	list_for_each_entry_safe(actual, aux, &myList, links) {
-		list_del(&actual->links);
-		kfree(actual);
-	}
-
->>>>>>> Stashed changes
 	printk(KERN_INFO "Módulo extraído con éxito\n");
 }
 
