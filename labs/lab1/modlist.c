@@ -90,7 +90,7 @@ static ssize_t modlist_read(struct file* filp, char __user* buf, size_t len, lof
 		bytesRead += sprintf(aux,"%d\n",item->data);
 
 		if(bytesRead > MAX_LEN)
-			return -ENOMEM;
+			return -EMSGSIZE;
 		
 		dest += sprintf(dest,"%d\n",item->data);
 	}
@@ -130,7 +130,7 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 
 
 
-	// add creo que se procesa así
+	// add añade value a la lista
 	if (sscanf(c, "add %i", &value)) {
 		printk(KERN_INFO "Entrando en la parte ADD\n");
 
