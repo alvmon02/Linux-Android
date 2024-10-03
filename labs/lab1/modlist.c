@@ -7,7 +7,7 @@
 #include <linux/slab.h>
 #include <linux/list.h>
 
-#define MAX_LEN 32
+#define MAX_LEN 128
 
 
 MODULE_LICENSE("GPL");  /*  Licencia del modulo */
@@ -68,14 +68,13 @@ int modulo_Practica1_init(void)
 static ssize_t modlist_read(struct file* filp, char __user* buf, size_t len, loff_t* off)
 {
 	int bytesRead = 0;
-	char kbuf[MAX_LEN] = "";
-	char* dest = kbuf;
+	char kbuf[MAX_LEN] = "",
+		 aux[10] = "";
+	char *dest = kbuf;
 
 	struct list_item* item = NULL;
 	struct list_head* cur_node = NULL;
 
-	//if (len > MAX_LEN)
-	//	return -ENOMEM;
 
 	 if ((*off) > 0) /* Tell the application that there is nothing left to read */
 	 	return bytesRead;
@@ -86,8 +85,14 @@ static ssize_t modlist_read(struct file* filp, char __user* buf, size_t len, lof
 	
 		//Extracción de elementos para escritura a panalla
 	list_for_each(cur_node, &myList) {
+	
 		item = list_entry(cur_node, struct list_item, links);
-		dest += sprintf( dest,"%d\n",item->data);
+		bytesRead += sprintf(aux,"%d\n",item->data);
+
+		if(bytesRead > MAX_LEN)
+			return -ENOMEM;
+		
+		dest += sprintf(dest,"%d\n",item->data);
 	}
 
 
@@ -174,6 +179,8 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 	else
 		return -EINVAL;
 
+	(*off)+=len; 
+	
 	return len;
 }
 
