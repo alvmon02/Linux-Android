@@ -9,23 +9,27 @@
 
 #define MAX_LEN 128
 
-
 MODULE_LICENSE("GPL");  /*  Licencia del modulo */
 
-//Preprocesadores, para escribir las funciones sin importar el órden
+/**
+ * @author Álvaro Montes Anacona
+ * @author Francisco Molla Astrar
+ */
+
+	//Preprocesadores, para escribir las funciones sin importar el órden
 int modulo_Practica1_init(void);
 void modulo_Practica1_clean(void);
 static ssize_t modlist_read(struct file* filp, char __user* buf, size_t len, loff_t* off);
 static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t len, loff_t* off);
 void print_list_dmesg(struct list_head* list);
 
-//Definición de estructuras necesarias
+	//Definición de estructuras necesarias
 static const struct proc_ops proc_entry_fops = {
 	.proc_read = modlist_read,
 	.proc_write = modlist_write,
 };
 
-//Estructura que representa los nodos de la lista
+	//Estructura que representa los nodos de la lista
 struct list_item {
 	int data;
 	struct list_head links;
@@ -34,18 +38,11 @@ struct list_item {
 #define ITEM_SIZE sizeof(struct list_item)
 
 
-//Variables Globales
+	//Variables Globales
 static struct proc_dir_entry* proc_entry;
 
-// Nodo fantasma (cabecera) de la lista enlazada
+	// Nodo fantasma (cabecera) de la lista enlazada
 LIST_HEAD(myList);
-/**
- * OJO, éstas dos declaraciones son casi iguales,
- * de hecho, la macro añade el INIT_LIST_HEAD,
- * es ambos la declaración del nodo fantasma y su inicialización,
- * motivo por el que elimino la declaración de myList como struct
- * struct list_head myList; == LIST_HEAD(myList);
- */
 
 
 	/* Función que se invoca cuando se carga el módulo en el kernel */
@@ -90,7 +87,7 @@ static ssize_t modlist_read(struct file* filp, char __user* buf, size_t len, lof
 		bytesRead += sprintf(aux,"%d\n",item->data);
 
 		if(bytesRead > MAX_LEN)
-			return -EMSGSIZE;
+			return -EOVERFLOW;
 		
 		dest += sprintf(dest,"%d\n",item->data);
 	}
@@ -189,13 +186,7 @@ void print_list_dmesg(struct list_head* list)
 	struct list_item* item = NULL;
 	struct list_head* cur_node = NULL;
 
-	/*Traversing Linked List and Print its Members*/
-	// list_for_each_entry(item, &Head_Node, list) {
-	// 	printk(KERN_INFO "Node %d data = %d\n", count++, temp->data);
-	// }
-
 	list_for_each(cur_node, list) {
-		/* item points to the structure wherein the links are embedded */
 		item = list_entry(cur_node, struct list_item, links);
 		printk(KERN_INFO "Elemento de la lista: %i\n", item->data);
 	}
