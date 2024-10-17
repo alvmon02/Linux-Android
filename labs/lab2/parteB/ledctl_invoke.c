@@ -27,7 +27,7 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	return 0;
+	return EXIT_SUCCESS;
 }
 
 

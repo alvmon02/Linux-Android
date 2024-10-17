@@ -1,3 +1,6 @@
+/**
+ *	Para añadir en la carpeta de linux-A.B.C/kernel/
+ */
 #include <linux/syscalls.h> /* For SYSCALL_DEFINEi() */
 #include <linux/kernel.h>
 

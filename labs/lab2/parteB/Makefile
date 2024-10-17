@@ -2,7 +2,7 @@
 #
 # Makefile for the linux kernel.
 #
-#	To be added to linux-A.B.C/kernel/
+#	Para añadir en la carpeta de linux-A.B.C/kernel/
 #
 
 obj-y     = fork.o exec_domain.o panic.o \

@@ -8,7 +8,7 @@
 #
 # The abi is "common", "64" or "x32" for this file.
 #
-#	add to path linux-A.B.C/arch/x86/entry/syscalls/
+#	Para añadir a la carpeta linux-A.B.C/arch/x86/entry/syscalls/
 #
 0	common	read			sys_read
 1	common	write			sys_write
