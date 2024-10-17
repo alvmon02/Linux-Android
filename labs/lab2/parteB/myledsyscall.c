@@ -35,18 +35,16 @@ SYSCALL_DEFINE1(ledctl, unsigned int, leds)
 
 	kbd_driver= get_kbd_driver_handler();
 
-	if((leds & ICAPS_LED) == ICAPS_LED)
+	if(leds & ICAPS_LED)
 		real_Leds |= CAPS_LED;
 	
-	if((leds & INUM_LED) == INUM_LED)
+	if(leds & INUM_LED)
 		real_Leds |= NUM_LED;
 	
-	if((leds & IBLOC_LED) == IBLOC_LED)
+	if(leds & IBLOC_LED)
 		real_Leds |= BLOC_LED;
 
-	set_leds(kbd_driver,real_Leds);
-	
-	return 0;
+	return set_leds(kbd_driver,real_Leds);
 }
 
 
