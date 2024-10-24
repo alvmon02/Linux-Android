@@ -42,6 +42,10 @@ struct usb_blink {
 
 static struct usb_driver blink_driver;
 
+int blinkdrv_module_init(void);
+void blinkdrv_module_cleanup(void);
+char* set_device_permissions(__cconst__ struct device *dev, umode_t *mode);
+
 /* 
  * Free up the usb_blink structure and
  * decrement the usage count associated with the usb device 
@@ -137,42 +141,52 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 	message[0]='\x05';
 	message[1]=0x00;
 	message[2]=0; 
-	message[3]=((color>>16) & 0xff);
- 	message[4]=((color>>8) & 0xff);
- 	message[5]=(color & 0xff);
-
-
-	for (i=0;i<NR_LEDS;i++){
-
-		message[2]=i; /* Change Led number in message */
 	
+
+	for (i=0;i<NR_LEDS;i++)
+	{
+			/* Pick a color and get ready for the next invocation*/		
+		color=sample_colors[color_cnt];
+		
+		message[2]=i; /* Change Led number in message */
+		message[3]=((color>>16) & 0xff);
+	 	message[4]=((color>>8) & 0xff);
+	 	message[5]=(color & 0xff);
+
 		/* 
 		 * Send message (URB) to the Blinkstick device 
 		 * and wait for the operation to complete 
 		 */
-		retval=usb_control_msg(dev->udev,	
-			 usb_sndctrlpipe(dev->udev,00), /* Specify endpoint #0 */
-			 USB_REQ_SET_CONFIGURATION, 
-			 USB_DIR_OUT| USB_TYPE_CLASS | USB_RECIP_DEVICE,
-			 0x5,	/* wValue */
-			 0, 	/* wIndex=Endpoint # */
-			 message,	/* Pointer to the message */ 
-			 NR_BYTES_BLINK_MSG, /* message's size in bytes */
-			 0);		
+		do{
+			retval=usb_control_msg(dev->udev,	
+									usb_sndctrlpipe(dev->udev,00), /* Specify endpoint #0 */
+									USB_REQ_SET_CONFIGURATION, 
+									USB_DIR_OUT| USB_TYPE_CLASS | USB_RECIP_DEVICE,
+									0x5,	/* wValue */
+									0, 	/* wIndex=Endpoint # */
+									message,	/* Pointer to the message */ 
+									NR_BYTES_BLINK_MSG, /* message's size in bytes */
+									0);		
 
-		if (retval<0){
-			printk(KERN_ALERT "Executed with retval=%d\n",retval);
-			goto out_error;		
-		}
+			if (retval<0){
+				printk(KERN_ALERT "Executed with retval=%d\n",retval);
+				//goto out_error;
+			}
+		} while(retval<0);
+
+		color_cnt++;
+			/* Reset the color counter if necessary */	
+		if (color_cnt == NR_SAMPLE_COLORS)
+			color_cnt=0;
 	}
 
 	kfree(message);
 	(*off)+=len;
 	return len;
-
+/*
 out_error:
 	kfree(message);
-	return retval;	
+	return retval;*/
 }
 
 
