@@ -6,7 +6,6 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/list.h>
-#include <linux/string.h>
 
 #define MAX_LEN 128
 
@@ -114,8 +113,6 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 
 	int value = 0;
 
-	unsigned int led[8],num[8];
-
 	char c[MAX_LEN + 1];
 
 	struct list_item* tempList = NULL;
@@ -128,17 +125,7 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 
 	c[len] = '\0';
 
-	for(int i=0; i<len;i+=11)
-	{
-		int a=c[i];
-		
-		led[a] = 1;
 
-		sscanf(&c[i+2],"%u,",&num[a]);
-
-		printk(KERN_INFO "led numero: %u\n",a);
-		printk(KERN_INFO "color: %u\n",num[a]);
-	}
 
 	// add añade value a la lista
 	if (sscanf(c, "add %i", &value)) {
@@ -186,8 +173,8 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 		
 		printk(KERN_INFO "Parte CLEANUP completada con éxito\n");
 	}
-	//else
-	//	return -EINVAL;
+	else
+		return -EINVAL;
 
 	(*off)+=len; 
 	
