@@ -155,9 +155,6 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 		led[a] = 1;
 
 		sscanf(&c[i + 4], "%x,", &num[a]);
-
-		printk(KERN_INFO "led numero: %u\n", a);
-		printk(KERN_INFO "color: %u\n", num[a]);
 	}
 
 	for (i = 0; i < NR_LEDS; i++)
