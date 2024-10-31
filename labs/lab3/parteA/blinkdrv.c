@@ -148,31 +148,40 @@ static ssize_t blink_write(struct file* file, const char* user_buffer,
 		num[i] = 0;
 	}
 
+        if(len >1)
 	for (int i = 0; i < len; i += 11)
 	{
 		int a = c[i] - '0';
 
-		// a < 0 -> no debería hacer falta porque no hay ascii negativos
-		if (a > 8) 
-			return -EINVAL;
-
+		// a < 0 -> no deberï¿½a hacer falta porque no hay ascii negativos
+		if (a > 8){ 
+		    printk(KERN_INFO "NUM NOEX\n");
+		    return -EINVAL;
+                }
 		led[a] = 1;
 
-		// revisión adicional de que se cumple el formato esperado input 0x......
-		if (c[i + 3] != "x")
+		// revisiï¿½n adicional de que se cumple el formato esperado input 0x......
+		if (c[i + 3] != 'x'){
+		        printk(KERN_INFO "Hex comp\n");
 			return -EINVAL;
-
+                }
 		// se revisa que todos los valores cumplen el formato (se encuentran entre 0 y F)
 		for (int j = 0; j < NR_BYTES_BLINK_MSG; j++) {
-			int aux = c[i + j] - '0';
-			if (aux > 15) {
-				return -EINVAL;
-			}
+			int aux = c[i + 4 + j] - '0';
+		        found_HEX=0;
+			if (aux > 9) {
+			        aux +='0';
+			        if (!(96 < aux && aux < 103))
+				    found_HEX=0;
+				else
+				    found_HEX=1;
+			        if(!(64< aux && aux < 71) && !found_HEX)
+			            return -EINVAL;
+			} 
 		}
 
 		sscanf(&c[i + 4], "%x,", &num[a]);	
 	}
-
 	for (i = 0; i < NR_LEDS; i++)
 	{
 
