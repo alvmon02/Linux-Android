@@ -36,8 +36,8 @@ MODULE_LICENSE("GPL");
 /* Structure to hold all of our device specific stuff */
 struct usb_blink
 {
-	struct usb_device *udev;		 /* the usb device for this device */
-	struct usb_interface *interface; /* the interface for this device */
+	struct usb_device* udev;		 /* the usb device for this device */
+	struct usb_interface* interface; /* the interface for this device */
 	struct kref kref;
 };
 #define to_blink_dev(d) container_of(d, struct usb_blink, kref)
@@ -46,25 +46,25 @@ static struct usb_driver blink_driver;
 
 int blinkdrv_module_init(void);
 void blinkdrv_module_cleanup(void);
-char *set_device_permissions(__cconst__ struct device *dev, umode_t *mode);
+char* set_device_permissions(__cconst__ struct device* dev, umode_t* mode);
 
 /*
  * Free up the usb_blink structure and
  * decrement the usage count associated with the usb device
  */
-static void blink_delete(struct kref *kref)
+static void blink_delete(struct kref* kref)
 {
-	struct usb_blink *dev = to_blink_dev(kref);
+	struct usb_blink* dev = to_blink_dev(kref);
 
 	usb_put_dev(dev->udev);
 	kfree(dev);
 }
 
 /* Called when a user program invokes the open() system call on the device */
-static int blink_open(struct inode *inode, struct file *file)
+static int blink_open(struct inode* inode, struct file* file)
 {
-	struct usb_blink *dev;
-	struct usb_interface *interface;
+	struct usb_blink* dev;
+	struct usb_interface* interface;
 	int subminor;
 	int retval = 0;
 
@@ -75,7 +75,7 @@ static int blink_open(struct inode *inode, struct file *file)
 	if (!interface)
 	{
 		pr_err("%s - error, can't find device for minor %d\n",
-			   __func__, subminor);
+			__func__, subminor);
 		return -ENODEV;
 	}
 
@@ -94,9 +94,9 @@ static int blink_open(struct inode *inode, struct file *file)
 }
 
 /* Called when a user program invokes the close() system call on the device */
-static int blink_release(struct inode *inode, struct file *file)
+static int blink_release(struct inode* inode, struct file* file)
 {
-	struct usb_blink *dev;
+	struct usb_blink* dev;
 
 	dev = file->private_data;
 	if (dev == NULL)
@@ -112,18 +112,18 @@ static int blink_release(struct inode *inode, struct file *file)
 
 #define NR_SAMPLE_COLORS 4
 
-unsigned int sample_colors[] = {0x000011, 0x110000, 0x001100, 0x000000};
+unsigned int sample_colors[] = { 0x000011, 0x110000, 0x001100, 0x000000 };
 
 /* Called when a user program invokes the write() system call on the device */
-static ssize_t blink_write(struct file *file, const char *user_buffer,
-						   size_t len, loff_t *off)
+static ssize_t blink_write(struct file* file, const char* user_buffer,
+	size_t len, loff_t* off)
 {
-	struct usb_blink *dev = file->private_data;
+	struct usb_blink* dev = file->private_data;
 	int retval = 0;
 	int i = 0;
 	char c[MAX_LEN + 1];
-	unsigned char *message;
-	unsigned int color,led[NR_LEDS], num[NR_LEDS];
+	unsigned char* message;
+	unsigned int color, led[NR_LEDS], num[NR_LEDS];
 
 	message = kmalloc(NR_BYTES_BLINK_MSG, GFP_DMA);
 
@@ -134,7 +134,7 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 	message[0] = '\x05';
 	message[1] = 0x00;
 
-	
+
 	if (len > MAX_LEN)
 		return -1;
 
@@ -143,7 +143,7 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 
 	c[len] = '\0';
 
-	for (int i = 0; i < NR_LEDS; i++){
+	for (int i = 0; i < NR_LEDS; i++) {
 		led[i] = 0;
 		num[i] = 0;
 	}
@@ -152,19 +152,35 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 	{
 		int a = c[i] - '0';
 
+		// a < 0 -> no debería hacer falta porque no hay ascii negativos
+		if (a > 8) 
+			return -EINVAL;
+
 		led[a] = 1;
 
-		sscanf(&c[i + 4], "%x,", &num[a]);
+		// revisión adicional de que se cumple el formato esperado input 0x......
+		if (c[i + 3] != "x")
+			return -EINVAL;
+
+		// se revisa que todos los valores cumplen el formato (se encuentran entre 0 y F)
+		for (int j = 0; j < NR_BYTES_BLINK_MSG; j++) {
+			int aux = c[i + j] - '0';
+			if (aux > 15) {
+				return -EINVAL;
+			}
+		}
+
+		sscanf(&c[i + 4], "%x,", &num[a]);	
 	}
 
 	for (i = 0; i < NR_LEDS; i++)
 	{
-		
-		if(led[i])
+
+		if (led[i])
 			color = num[i];
-		else 
+		else
 			color = 0;
-		
+
 		message[2] = i; /* Change Led number in message */
 		message[3] = ((color >> 16) & 0xff);
 		message[4] = ((color >> 8) & 0xff);
@@ -176,14 +192,14 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 		 */
 
 		retval = usb_control_msg(dev->udev,
-								 usb_sndctrlpipe(dev->udev, 00), /* Specify endpoint #0 */
-								 USB_REQ_SET_CONFIGURATION,
-								 USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_DEVICE,
-								 0x5,				 /* wValue */
-								 0,					 /* wIndex=Endpoint # */
-								 message,			 /* Pointer to the message */
-								 NR_BYTES_BLINK_MSG, /* message's size in bytes */
-								 0);
+			usb_sndctrlpipe(dev->udev, 00), /* Specify endpoint #0 */
+			USB_REQ_SET_CONFIGURATION,
+			USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_DEVICE,
+			0x5,				 /* wValue */
+			0,					 /* wIndex=Endpoint # */
+			message,			 /* Pointer to the message */
+			NR_BYTES_BLINK_MSG, /* message's size in bytes */
+			0);
 		if (retval < 0)
 		{
 			printk(KERN_ALERT "Executed with retval=%d\n", retval);
@@ -194,10 +210,10 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 	kfree(message);
 	(*off) += len;
 	return len;
-	
-	out_error:
-		kfree(message);
-		return retval;
+
+out_error:
+	kfree(message);
+	return retval;
 }
 
 /*
@@ -219,7 +235,7 @@ static const struct file_operations blink_fops = {
  * For each blinkstick connected device a character device file
  * named /dev/usb/blinkstick<N> will be created automatically
  */
-char *set_device_permissions(__cconst__ struct device *dev, umode_t *mode)
+char* set_device_permissions(__cconst__ struct device* dev, umode_t* mode)
 {
 	if (mode)
 		(*mode) = 0666;									   /* RW permissions */
@@ -241,10 +257,10 @@ static struct usb_class_driver blink_class = {
  * Invoked when the USB core detects a new
  * blinkstick device connected to the system.
  */
-static int blink_probe(struct usb_interface *interface,
-					   const struct usb_device_id *id)
+static int blink_probe(struct usb_interface* interface,
+	const struct usb_device_id* id)
 {
-	struct usb_blink *dev;
+	struct usb_blink* dev;
 	int retval = -ENOMEM;
 
 	/*
@@ -275,15 +291,15 @@ static int blink_probe(struct usb_interface *interface,
 	{
 		/* something prevented us from registering this driver */
 		dev_err(&interface->dev,
-				"Not able to get a minor for this device.\n");
+			"Not able to get a minor for this device.\n");
 		usb_set_intfdata(interface, NULL);
 		goto error;
 	}
 
 	/* let the user know what node this device is now attached to */
 	dev_info(&interface->dev,
-			 "Blinkstick device now attached to blinkstick-%d",
-			 interface->minor);
+		"Blinkstick device now attached to blinkstick-%d",
+		interface->minor);
 	return 0;
 
 error:
@@ -297,9 +313,9 @@ error:
  * Invoked when a blinkstick device is
  * disconnected from the system.
  */
-static void blink_disconnect(struct usb_interface *interface)
+static void blink_disconnect(struct usb_interface* interface)
 {
-	struct usb_blink *dev;
+	struct usb_blink* dev;
 	int minor = interface->minor;
 
 	dev = usb_get_intfdata(interface);
