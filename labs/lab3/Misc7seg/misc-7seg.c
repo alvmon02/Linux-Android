@@ -21,6 +21,31 @@ MODULE_LICENSE("GPL");
 #define DS_DP 0x01
 #define SEGMENT_COUNT 8
 
+/**
+ * Number Representation in Segments form,
+ * aided by usage of Bits Macros
+ */
+
+#define N0 DS_A|DS_B|DS_C|DS_D|DS_E|DS_F
+#define N1 DS_B|DS_C
+#define N2 DS_A|DS_B|DS_G|DS_D|DS_E
+#define N3 DS_A|DS_B|DS_C|DS_D|DS_G
+#define N4 DS_B|DS_C|DS_F|DS_G
+#define N5 DS_A|DS_F|DS_G|DS_C|DS_D
+#define N6 DS_A|DS_C|DS_D|DS_E|DS_F|DS_G
+#define N7 DS_A|DS_B|DS_C
+#define N8 DS_A|DS_B|DS_C|DS_D|DS_E|DS_F|DS_G
+#define N9 DS_A|DS_B|DS_C|DS_F|DS_G
+#define NA DS_A|DS_B|DS_C|DS_E|DS_F|DS_G
+#define NB DS_C|DS_D|DS_E|DS_F|DS_G
+#define NC DS_A|DS_D|DS_E|DS_F
+#define ND DS_B|DS_C|DS_D|DS_E|DS_G
+#define NE DS_A|DS_D|DS_E|DS_F|DS_G
+#define NF DS_A|DS_E|DS_F|DS_G
+#define NCOUNT 16
+
+#define MAX_LEN 128
+
 /* Indices of GPIOs used by this module */
 enum
 {
@@ -41,6 +66,8 @@ const char *display_gpio_str[NR_GPIO_DISPLAY] = {"sdi", "rclk", "srclk"};
 /* Sequence of segments used by the character device driver */
 const int sequence[] = {DS_D, DS_E, DS_F, DS_A, DS_B, DS_C, DS_G, DS_DP, -1};
 
+//Lista de todas las representaciones de números en 7segment(tamaño=16)
+const int sequenceN[] = {N0, N1, N2,N3, N4, N5, N6, N7, N8, N9, NA, NB, NC, ND, NE, NF};
 #define DEVICE_NAME "display7s" /* Device name */
 
 /*
@@ -99,18 +126,28 @@ static void update_7sdisplay(unsigned char data)
 static ssize_t
 display7s_write(struct file *filp, const char *buff, size_t len, loff_t *off)
 {
-	/* The variable is defined as static to have a counter value that persists across invocations of display7s_write */
-	static int counter = 0;
+	int hex_Num = 0;
+	char c[MAX_LEN + 1];
+
+	if (len > MAX_LEN)
+		return -1;
+
+	if (copy_from_user(c, buff, len))
+		return -EFAULT;
+
+	c[len] = '\0';
+
+	if(strlen(c) > 2)
+		return -EINVAL;
+
+	if(sscanf(c, "%x,", &hex_Num) != 1)
+		return -EINVAL;
+
+	if(hex_Num < 0 || hex_Num > 15)
+		return -EINVAL;
 
 	/* Update the corresponding value in the display */
-	update_7sdisplay(sequence[counter]);
-
-	/* Update counter in preparation for next invocation of the function */
-	counter++;
-
-	/* Reset counter if end marker is found */
-	if (sequence[counter] == -1)
-		counter = 0;
+	update_7sdisplay(sequenceN[hex_Num]);
 
 	return len;
 }
