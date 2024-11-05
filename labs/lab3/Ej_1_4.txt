@@ -1,0 +1,75 @@
+Ejercicio 1
+
+Probar y analizar el código de los módulos de ejemplo Chardev2 y ChardevMisc. Compilar y cargar cada uno de los módulos del kernel y responder a las siguientes preguntas para cada uno de ellos:
+
+1. ¿Cuál es la ruta (path) del fichero de dispositivo que se crea automáticamente al cargar el módulo?
+	- /dev/chardev y /dev/chardev_misc
+2. ¿En qué fichero especial del sistema puede consultarse el major number asignado al driver correspondiente?
+	- Haciendo stat de los propios /dev/chardev y /dev/chardev_misc se puede conocer el major y el minor asociados en el campo device type.
+3. ¿Qué minor number tiene asociado cada uno de los ficheros especiales creados al cargar los módulos del kernel? ¿Qué llamada del driver se encarga de asignar ese minor number?
+	- Chardev tiene el minor 0 y ChardevMisc tiene el minor 122. Se asigna en l init_module() con la llamada MINOR(start).
+4. ¿Qué sucede al escribir en el fichero especial de dispositivo (p.ej., echo hello > /dev/chardev)? ¿Por que se produce este comportamiento?
+	- En ambos casos se muestra un mensaje indicando que la operación no está permitida. Es un comportamiento esperable puesto que así está codificado. El archivo en si mismo si tiene permisos de escritura.
+
+----------------------------------------------------------------
+Ejercicio 2
+
+Algunas funciones de la API del kernel Linux retornan un puntero a una estructura, que representa un objeto del kernel. En algunos casos, como en la función proc_create(), un valor de retorno igual a NULL indica que se ha producido un error. Un valor distinto de NULL refleja que la función se ha ejecutado correctamente, y que por tanto, la estructura devuelta es válida. El problema de esta aproximación a la gestión de errores es que la función invocadora desconoce el error concreto que se ha producido, ya que solo puede saber si ha habido error o no.
+
+Para ofrecer mayor robustez en la gestión de errores en funciones que retornan un puntero a una estructura, es posible usar el propio puntero retornado para almacenar el código del error que se ha producido usando la macro ERR_PTR(). Consulta la implementación de la función class_create() cuya implementación, que puede encontrarse aquí, hace uso de la citada macro.
+
+Al usar funciones que codifican errores de esta forma es posible comprobar desde la función invocadora si el valor de retorno almacena un código de error usando la macro IS_ERR(). Además, en caso de que se haya producido un error la macro PTR_ERR() permite recuperar el código (negativo) de error a partir del puntero. Analiza detenidamente el uso de las macros IS_ERR() y PTR_ERR() en el módulo de ejemplo Chardev2.
+
+	Ejemplo de uso en Chardev2:
+	if (IS_ERR(class)) { // se comprueba que efectivamente el valor sea distinto de NULL
+        	pr_err("class_create() failed \n"); // se setea PTR_ERR() para poder recuperar el error
+        	ret = PTR_ERR(class); // se setea ret (variable tipo int) al error 
+        	goto error_class; // se finaliza la ejecución cerrando el modulo
+    	}
+
+----------------------------------------------------------------
+Ejercicio 3
+
+El módulo del kernel de ejemplo ChardevData constituye una variante de Chardev2, donde las variables globales a las que se accede en las operaciones open(), read() y release() se han reemplazado por una estructura privada asociada al struct device_data que crea el driver. Consulta la implementación del módulo ChardevData y responde a las siguientes preguntas.
+
+1. ¿Qué ventaja crees que tiene reemplazar las citadas variables globales por la estructura privada?
+	Aporta aislamiento, seguridad y compartimentalidad al pasar a ser privadas y por tanto solo accesibles por el módulo.
+2. ¿Que llamada de la API de Linux permite asociar en esta implementación la estructura privada al al struct device que crea el driver?
+	La función dev_get_drvdata() permite asociar el device que crea el driver al inicializar el struct con la info del mismo.
+3. ¿Cómo es posible recuperar dicha estructura privada en las operaciones open(), read() y release()? Pista: La estructura struct file* que se pasa como parámetro a estas operaciones representa el fichero abierto sobre el que se invocan las operaciones desde espacio de usuario, y su campo private_data se utiliza en el driver para almacenar un puntero.
+	Al ser un struct a file* se puede hacer que apunte a la propia estructura de modo que tenga acceso directo a la misma. Al ser privada además no tendría más efecto ni alcance que el propio módulo.
+----------------------------------------------------------------
+Ejercicio 4
+
+Analizar la implementación del módulo de ejemplo Clipboard-dev. Se trata de una variante del ejemplo Clipboard de la práctica 1, donde el “clipboard” se expone usando un fichero especial de caracteres /dev/clipboard en lugar de un fichero en /proc. Identifica las diferencias entre la implementación de ambos módulos del kernel: diff -u <ruta clipboard.c> <ruta clipboard-dev.c>
+	Las principales diferencias se encuentran en la inicialización y en la salida del módulo, pues al ser un driver de dispositivo y usar /dev propio de los mismos en vez de /proc requiere seguir pasos distintos.
+En ambos módulos del kernel están presentes las funciones clipboard_write() y clipboard_read() para gestionar las acciones de lectura y escritura sobre el fichero especial que representa el “clipboard” en cada caso. ¿Qué diferencias encuentras entre la implementación de estas funciones presentes tanto en Clipboard como en Clipboard-dev?
+	Las funciones clipboard_write() y clipboard_read() son idénticas en su implementación. 
+----------------------------------------------------------------
+Ejercicio 5
+
+En el directorio del módulo de ejemplo Clipboard de la práctica 1 pueden encontrarse dos ficheros de GNU Make: Makefile y Makefile.cross. El segundo de ellos sirve para realizar compilación cruzada del módulo del kernel para la Raspberry Pi desde nuestro host de desarrollo (la máquina virtual de Debian).
+
+Este ejercicio consiste en realizar una compilación cruzada del módulo del kernel Clipboard para la Raspberry Pi y probar el fichero .ko resultante de dicha compilación en la placa. Para ello han de seguirse los siguientes pasos:
+
+1. Abrir un navegador web en la máquina virtual y descargar el fichero linux-raspberry.tgz usando este enlace. El fichero comprimido contiene un kernel Linux ya compilado para la Raspberry Pi, que nos permite realizar compilación cruzada de módulos del kernel.
+
+2. Extraer el fichero comprimido en el HOME del usuario kernel. (Se asume que el fichero descargado se almacena en ~/Descargas).
+
+$ cd
+$ tar xzvf ./Descargas/linux-raspberry.tgz
+
+3. Instalar el compilador cruzado (debería encontrarse ya instalado en la máquina virtual):
+
+$ sudo apt install gcc-8-arm-linux-gnueabihf gcc-arm-linux-gnueabihf
+
+4. Ir al directorio Clipboard y borrar ficheros resultantes de compilaciones previas usando el Makefile convencional:
+
+kernel@debian:~$ cd FicherosP1/Clipboard
+kernel@debian:~/FicherosP1$ make clean 
+
+5. Generar el .ko adecuado para el kernel de la Raspberry pi usando el comando make -f Makefile.cross desde el mismo directorio donde nos encontramos. Nótese que con la opción -f de GNU Make se escoge manualmente el fichero Makefile para realizar la compilación.
+
+6. Finalmente, copiar el fichero .ko a la Raspberry Pi usando scp y probar dicho módulo en la placa
+
+Comando de copia del fichero al directorio HOME del usuario pi en la placa: scp clipboard.ko pi@pi:.
