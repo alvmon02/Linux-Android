@@ -6,8 +6,6 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 
-MODULE_DESCRIPTION("Misc Display7s Kernel Module - FDI-UCM");
-MODULE_AUTHOR("Juan Carlos Saez");
 MODULE_LICENSE("GPL");
 
 /* Bits associated with each segment */
