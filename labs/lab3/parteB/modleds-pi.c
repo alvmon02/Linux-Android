@@ -41,7 +41,7 @@ static struct device* device = NULL;
 #define DEVICE_NAME "modleds"   /* Dev name as it appears in /proc/devices   */
 #define CLASS_NAME "mleds"
 
-static ssize_t clipboard_write(struct file *filp, const char __user *buff, size_t len, loff_t *off) {
+static ssize_t modleds_write(struct file *filp, const char __user *buff, size_t len, loff_t *off) {
   int num = 0,real_Leds = 0;
 	char c[MAX_LEN + 1];
 
@@ -73,18 +73,17 @@ static ssize_t clipboard_write(struct file *filp, const char __user *buff, size_
 
   set_pi_leds(real_Leds);
 
-
   return len;
 }
 
-static ssize_t clipboard_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
+static ssize_t modleds_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
     printk(KERN_ALERT "Sorry, this operation isn't supported.\n");
     return -EPERM;
 }
 
 static struct file_operations fops = {
-  .read = clipboard_read,
-  .write = clipboard_write,
+  .read = modleds_read,
+  .write = modleds_write,
 };
 
 /* Set led state to that specified by mask */
@@ -161,9 +160,7 @@ static int __init modleds_init(void)
   printk(KERN_INFO "the driver try to cat and echo to /dev/%s.\n", DEVICE_NAME);
   printk(KERN_INFO "Remove the module when done.\n");
 
-  printk(KERN_INFO "Clipboard-dev: Module loaded.\n");
-
-
+  printk(KERN_INFO "modleds: Module loaded.\n");
 
   for (i = 0; i < NR_GPIO_LEDS; i++) {
     /* Build string ID */
