@@ -138,8 +138,10 @@ static ssize_t blink_write(struct file* file, const char* user_buffer,
 	if (len > MAX_LEN)
 		return -1;
 
-	if (copy_from_user(c, user_buffer, len))
+	if (copy_from_user(c, user_buffer, len)) {
+		kfree(message);
 		return -EFAULT;
+	}
 
 	c[len] = '\0';
 
@@ -179,8 +181,10 @@ static ssize_t blink_write(struct file* file, const char* user_buffer,
 						found_HEX=0;
 					else
 						found_HEX=1;
-					if(!(64< aux && aux < 71) && !found_HEX)
+					if (!(64 < aux && aux < 71) && !found_HEX) {
+						kfree(message);
 						return -EINVAL;
+					}
 				}
 			}
 			sscanf(&c[i + 4], "%x,", &num[a]);
