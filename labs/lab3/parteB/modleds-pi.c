@@ -38,7 +38,7 @@ static struct cdev* modleds = NULL;
 static struct class* class = NULL;
 static struct device* device = NULL;
 
-#define DEVICE_NAME "modleds"   /* Dev name as it appears in /proc/devices   */
+#define DEVICE_NAME "leds"
 #define CLASS_NAME "mleds"
 
 static ssize_t modleds_write(struct file *filp, const char __user *buff, size_t len, loff_t *off) {
