@@ -135,7 +135,7 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 
 	// add añade value a la lista
 	if (sscanf(c, "add %i", &value)) {
-		printk(KERN_INFO "Entrando en la parte ADD\n");
+		//printk(KERN_INFO "Entrando en la parte ADD\n");
 
 		tempList = kmalloc(ITEM_SIZE, GFP_KERNEL);
 
@@ -148,12 +148,12 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 
 		spin_unlock(&sp);
 
-		printk(KERN_INFO "Parte ADD completada con éxito\n");
+		//printk(KERN_INFO "Parte ADD completada con éxito\n");
 	}
 	// remove borra todas las apariciones del elemento de la lista
 	else if (sscanf(c, "remove %d", &value)) {
 
-		printk(KERN_INFO "Entrando en la sección REMOVE\n");
+		//printk(KERN_INFO "Entrando en la sección REMOVE\n");
 
 		// Recorre la lista eliminando todas las apariciones del valor value
 		// y liberando la memoria 
@@ -168,12 +168,12 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 		}
 		spin_unlock(&sp);
 		
-		printk(KERN_INFO "Parte REMOVE completada con éxito\n");
+		//printk(KERN_INFO "Parte REMOVE completada con éxito\n");
 	}
 	// cleanup borra todos los elementos de la lista
 	else if (strcmp(c, "cleanup\n") == 0) {
 
-		printk(KERN_INFO "Entrando a la parte CLEANUP\n");
+		//printk(KERN_INFO "Entrando a la parte CLEANUP\n");
 
 		/* Recorre la lista y libera la memoria */
 		spin_lock(&sp);
@@ -185,7 +185,7 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 		
 		spin_unlock(&sp);
 		
-		printk(KERN_INFO "Parte CLEANUP completada con éxito\n");
+		//printk(KERN_INFO "Parte CLEANUP completada con éxito\n");
 	}
 	else
 		return -EINVAL;
