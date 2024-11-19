@@ -12,10 +12,7 @@ MODULE_LICENSE("GPL");
 /*
  *  Prototypes
  */
-int init_module(void);
-void cleanup_module(void);
-static int prodcons_open(struct inode*, struct file*);
-static int prodcons_release(struct inode*, struct file*);
+
 static ssize_t prodcons_read(struct file* filp, char __user* buf, size_t len, loff_t* off);
 static ssize_t prodcons_write(struct file* filp, const char __user* buff, size_t len, loff_t* off);
 
@@ -29,8 +26,6 @@ struct semaphore mtx, huecos, elementos;
 static struct file_operations fops = {
     .read = prodcons_read,
     .write = prodcons_write,
-    .open = prodcons_open,
-    .release = prodcons_release,
     .owner = THIS_MODULE
 };
 
@@ -47,7 +42,7 @@ static struct miscdevice misc_prodcons = {
 /*
  * This function is called when the module is loaded
  */
-int init_module(void)
+int myinit_module(void)
 {
     int major;      /* Major number assigned to our device driver */
     int minor;      /* Minor number assigned to the associated character device */
@@ -71,8 +66,6 @@ int init_module(void)
     dev_info(device, "the driver try to cat and echo to /dev/%s.\n", DEVICE_NAME);
     dev_info(device, "Remove the module when done.\n");
 
-    try_module_get(THIS_MODULE);
-
     if (kfifo_alloc(&mKfifo, MAX_CHARS_KBUF * sizeof(int), GFP_KERNEL))
         return -ENOMEM;
 
@@ -86,32 +79,14 @@ int init_module(void)
 /*
  * This function is called when the module is unloaded
  */
-void cleanup_module(void)
+void mycleanup_module(void)
 {
+
     if (down_interruptible(&mtx))
         kfifo_free(&mKfifo);
     
-
     misc_deregister(&misc_prodcons);
     pr_info("prodcons misc driver deregistered. Bye\n");
-}
-
-/*
- * Called when a process tries to open the device file.
- */
-static int prodcons_open(struct inode* inode, struct file* file)
-{
-    return 0;
-}
-
-/*
- * Called when a process closes the device file.
- */
-static int prodcons_release(struct inode* inode, struct file* file)
-{
-    module_put(THIS_MODULE);
-
-    return 0;
 }
 
 /*
@@ -136,7 +111,7 @@ static ssize_t prodcons_read(struct file* filp, char __user* buf, size_t len, lo
     }
 
     /* Extraer el primer entero del buffer */
-    kfifo_out(&kbuf, &val, sizeof(int));
+    kfifo_out(&mKfifo, &val, sizeof(int));
     /* Salir de la SC */
     up(&mtx);
     up(&huecos);
@@ -145,6 +120,8 @@ static ssize_t prodcons_read(struct file* filp, char __user* buf, size_t len, lo
     //... copy_to_user() ...
     if (copy_to_user(buf, kbuf, nr_bytes))
         return -EFAULT;
+
+    *off += nr_bytes;
 
     return nr_bytes;
 }
@@ -158,9 +135,6 @@ static ssize_t prodcons_write(struct file* filp, const char __user* buff, size_t
         return -EFAULT;
 
     kbuf[len] = '\0';
-
-    if (strlen(kbuf) > 2)
-        return -EINVAL;
 
     if (sscanf(kbuf, "%i,", &val) != 1)
         return -EINVAL;
@@ -181,5 +155,11 @@ static ssize_t prodcons_write(struct file* filp, const char __user* buff, size_t
     up(&mtx);
     up(&elementos);
 
+    *off += len;
+
     return len;
 }
+
+/* Declaración de funciones init y exit */
+module_init(myinit_module);
+module_exit(mycleanup_module);
