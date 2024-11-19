@@ -1,0 +1,35 @@
+Ejercicio 1
+
+El módulo de ejemplo refmod.c ilustra la importancia del contador de referencia asociado a un módulo del kernel. Este módulo, al cargarse, expone al usuario un fichero especial de caracteres /dev/refmod. Al leer de dicho fichero especial con cat, el proceso lector se bloquea durante unos segundos, y a continuación retorna devolviendo 0 bytes en la operación de lectura. El periodo de bloqueo durante la lectura –especificado en milisegundos– es configurable, gracias al parámetro stime_ms que exporta el módulo, y que puede establecerse en tiempo de carga en el kernel.
+
+Consultar la implementación de la operación de lectura del fichero especial de caracteres (función refmod_read() del módulo). Como puede observarse, el bloqueo se lleva a cabo llamando a la función msleep() vista en clase. Responder de forma razonada a las siguientes preguntas:
+
+1. ¿Cuánto dura el periodo de bloqueo si el módulo del kernel se carga sin establecer el valor del parámetro configurable stime_ms?
+	
+	El periodo de tiempo es 0 o imperceptible, la respuesta es inmediata.
+
+2. Ejecutar el comando cat /proc/refmod en un terminal. ¿Qué sucede al intentar interrumpir la ejecución de cat con CTRL + C? ¿Termina la ejecución de cat si se envía una señal SIGTERM o SIGKILL con kill a este proceso (usar otra terminal para ello, e incrementar el periodo de bloqueo para tener más tiempo para comprobarlo)? ¿En qué estado se bloquea un proceso cuando la llamada al sistema invocada hace uso de msleep()?
+	
+	Al intentar interrumpir la ejecución de car con CTRL + C no sucede nada. Al intentar hacer kill son SIGTERM en otra terminal no sucede nada, al ser lo mismo que un CTRL + C, no obstante al volver se escribe por la salida Terminado. En el caso de hacer kill con SIGKILL tampoco vuelve inmediatamente y al regresar se muestra por la salida Terminado (killed). Se bloquea en el estado D. Un proceso en estado ininterrumpible (Estado D en herramientas como top y ps) se refiere a un proceso que se encuentra en una llamada de sistema (Una determinada función del núcleo) que no puede ser interrumpida por una señal.
+
+3. ¿Cuál es el valor del contador de referencia del módulo del kernel mientras NO se esté accediendo al fichero de dispositivo? Usar el comando lsmod para consultar el valor de este contador. ¿Sigue siendo el valor del contador de referencias el mismo mientras ejecutamos cat /proc/refmod en otra terminal (y antes de que ese comando termine)?
+
+	En todo momento es 0.
+
+4. ¿Es posible descargar satisfactoriamente el módulo del kernel mientras éste está en uso? Para comprobarlo pueden abrirse 2 terminales, usando el primero de ellos para ejecutar cat /proc/refmod, y el segundo para descargar el módulo (sudo rmmod refmod). En caso de que el comando de descarga funcione, comprobar si la ejecución del comando cat /proc/refmod termina correctamente, y si se muestran o no mensajes de error en el fichero de log del kernel a raíz de haber tratado de descargar el módulo cuando está en uso. ¿Cuál es la causa de este comportamiento?
+
+	Aparentemente el módulo se descarga sin problemas, sin embargo la ejecución del comando cat /dev/refmod no termina. Al regresar la llamada msleep() la terminal se queda colgada y por el fichero de log del kernel se muestran errores. Pues el código que debía continuar ejecutando ha sido arrancado al descargar el módulo. Lo cual es potencialmente peligroso.
+
+Modificar el código de refmod.c para que el contador de referencia del módulo del kernel se incremente al hacer open() en el fichero especial de dispositivo, y se decremente al hacer close() del mismo. Recordad que las funciones que permiten incrementar y decrementar el contador de referencia son try_module_get() y module_put(), respectivamente. Para más información se aconseja consultar cualquiera de las variantes del módulo chardev proporcionadas en la práctica anterior, donde se usan estas funciones. Tras llevar a cabo las modificaciones propuestas, comprobar ahora el valor del contador de referencia del módulo del kernel mientras haya un “cat” en curso sobre el fichero de dispositivo. ¿Es posible descargar ahora el módulo mientras un proceso esté leyendo del fichero especial de dispositivo?
+
+	Una vez implementado el aumento y decremento del contador de referencia al realizar lsmod tras realizar el cat se muestra el contador a 2. Si se intenta descargar el modulo da un error: rmmod: ERROR: Module refmod is in use. Una vez termina se puede descargar con normalidad.
+
+------------------------------------------------------------------------------------------------
+
+Ejercicio 2
+
+Probar el funcionamiento del módulo de ejemplo kthread-mod.c , que al cargarse con insmod crea un kernel thread. Este kernel thread pasa casi todo el tiempo bloqueado, y se despierta cada segundo para imprimir un mensaje en el fichero de log del kernel.
+
+Para poder percibir esta impresión periódica del mensaje (tras cargar el módulo) se recomienda abrir una ventana de terminal adicional y ejecutar el siguiente comando: sudo dmesg -w. Este comando permite mostrar en tiempo real los mensajes que se van imprimiendo en el fichero de log del kernel.
+
+------------------------------------------------------------------------------------------------
