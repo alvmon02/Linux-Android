@@ -16,8 +16,8 @@ int init_module(void);
 void cleanup_module(void);
 static int prodcons_open(struct inode*, struct file*);
 static int prodcons_release(struct inode*, struct file*);
-static ssize_t prodcons_read(struct file*, char*, size_t, loff_t*);
-static ssize_t prodcons_write(struct file*, const char*, size_t, loff_t*);
+static ssize_t prodcons_read(struct file* filp, char __user* buf, size_t len, loff_t* off);
+static ssize_t prodcons_write(struct file* filp, const char __user* buff, size_t len, loff_t* off);
 
 #define DEVICE_NAME "prodcons"  /* Dev name as it appears in /proc/devices   */
 #define CLASS_NAME "mprodcons"
@@ -88,7 +88,9 @@ int init_module(void)
  */
 void cleanup_module(void)
 {
-    kfifo_free(&mKfifo);
+    if (down_interruptible(&mtx))
+        kfifo_free(&mKfifo);
+    
 
     misc_deregister(&misc_prodcons);
     pr_info("prodcons misc driver deregistered. Bye\n");
@@ -172,7 +174,7 @@ static ssize_t prodcons_write(struct file* filp, const char __user* buff, size_t
         return -EINTR;
     }
 
-    /* Inserción en el buffer circular */
+    /* Inserciï¿½n en el buffer circular */
     kfifo_in(&mKfifo, &val, sizeof(int));
 
     /* Salir de la SC */
@@ -181,7 +183,3 @@ static ssize_t prodcons_write(struct file* filp, const char __user* buff, size_t
 
     return len;
 }
-
-
-
-
