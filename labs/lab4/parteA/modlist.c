@@ -7,6 +7,7 @@
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
+#include <linux/ctype.h>
 #define MAX_LEN 128
 
 MODULE_LICENSE("GPL");  /*  Licencia del modulo */
@@ -36,7 +37,8 @@ struct list_item {
 };
 
 #define ITEM_SIZE sizeof(struct list_item)
-
+#define SSCAN_ADD (sscanf(c, "add %i", &value) == 1)
+#define SSCAN_REM (sscanf(c, "remove %d", &value) == 1)
 
 	//Variables Globales
 static struct proc_dir_entry* proc_entry;
@@ -112,7 +114,9 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 
 	// primero procesar remove / cleanup / add según el caso
 
-	int value = 0;
+	int value = 0,
+		in_Words = 0,
+		removed_Elem = 0;
 
 	char c[MAX_LEN + 1];
 
@@ -131,10 +135,15 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 	c[len] = '\0';
 
 
+	for(int i = 0; i<len;i++){
+		if(isspace(c[i]))
+			in_Words++;
+	}
 
+	
 
 	// add añade value a la lista
-	if (sscanf(c, "add %i", &value)) {
+	if (SSCAN_ADD && (in_Words < 3)) {
 		//printk(KERN_INFO "Entrando en la parte ADD\n");
 
 		tempList = kmalloc(ITEM_SIZE, GFP_KERNEL);
@@ -151,7 +160,7 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 		//printk(KERN_INFO "Parte ADD completada con éxito\n");
 	}
 	// remove borra todas las apariciones del elemento de la lista
-	else if (sscanf(c, "remove %d", &value)) {
+	else if (SSCAN_REM && (in_Words < 3)) {
 
 		//printk(KERN_INFO "Entrando en la sección REMOVE\n");
 
@@ -164,9 +173,13 @@ static ssize_t modlist_write(struct file* filp, const char __user* buf, size_t l
 			if (item->data == value) {
 				list_del(&actual->links);
 				kfree(actual);
+				removed_Elem++;
 			}
 		}
 		spin_unlock(&sp);
+
+		if(removed_Elem==0)
+			return -EINVAL;
 		
 		//printk(KERN_INFO "Parte REMOVE completada con éxito\n");
 	}
