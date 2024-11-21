@@ -89,8 +89,10 @@ static ssize_t modlist_read(struct file* filp, char __user* buf, size_t len, lof
 		item = list_entry(cur_node, struct list_item, links);
 		bytesRead += sprintf(aux,"%d\n",item->data);
 
-		if(bytesRead > MAX_LEN)
+		if(bytesRead > MAX_LEN){
+			spin_unlock(&sp);
 			return -EOVERFLOW;
+		}
 		
 		dest += sprintf(dest,"%d\n",item->data);
 	}

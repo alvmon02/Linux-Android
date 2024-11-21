@@ -5,6 +5,9 @@
 #include <asm-generic/errno.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
+#include <linux/fs.h>
+#include <linux/mutex.h>
+#include <linux/spinlock.h>
 
 MODULE_LICENSE("GPL");
 
@@ -23,26 +26,25 @@ MODULE_LICENSE("GPL");
  * Number Representation in Segments form,
  * aided by usage of Bits Macros
  */
-
-#define N0 DS_A|DS_B|DS_C|DS_D|DS_E|DS_F
-#define N1 DS_B|DS_C
-#define N2 DS_A|DS_B|DS_G|DS_D|DS_E
-#define N3 DS_A|DS_B|DS_C|DS_D|DS_G
-#define N4 DS_B|DS_C|DS_F|DS_G
-#define N5 DS_A|DS_F|DS_G|DS_C|DS_D
-#define N6 DS_A|DS_C|DS_D|DS_E|DS_F|DS_G
-#define N7 DS_A|DS_B|DS_C
-#define N8 DS_A|DS_B|DS_C|DS_D|DS_E|DS_F|DS_G
-#define N9 DS_A|DS_B|DS_C|DS_F|DS_G
-#define NA DS_A|DS_B|DS_C|DS_E|DS_F|DS_G
-#define NB DS_C|DS_D|DS_E|DS_F|DS_G
-#define NC DS_A|DS_D|DS_E|DS_F
-#define ND DS_B|DS_C|DS_D|DS_E|DS_G
-#define NE DS_A|DS_D|DS_E|DS_F|DS_G
-#define NF DS_A|DS_E|DS_F|DS_G
+#define N0 DS_A | DS_B | DS_C | DS_D | DS_E | DS_F
+#define N1 DS_B | DS_C
+#define N2 DS_A | DS_B | DS_G | DS_D | DS_E
+#define N3 DS_A | DS_B | DS_C | DS_D | DS_G
+#define N4 DS_B | DS_C | DS_F | DS_G
+#define N5 DS_A | DS_F | DS_G | DS_C | DS_D
+#define N6 DS_A | DS_C | DS_D | DS_E | DS_F | DS_G
+#define N7 DS_A | DS_B | DS_C
+#define N8 DS_A | DS_B | DS_C | DS_D | DS_E | DS_F | DS_G
+#define N9 DS_A | DS_B | DS_C | DS_F | DS_G
+#define NA DS_A | DS_B | DS_C | DS_E | DS_F | DS_G
+#define NB DS_C | DS_D | DS_E | DS_F | DS_G
+#define NC DS_A | DS_D | DS_E | DS_F
+#define ND DS_B | DS_C | DS_D | DS_E | DS_G
+#define NE DS_A | DS_D | DS_E | DS_F | DS_G
+#define NF DS_A | DS_E | DS_F | DS_G
 #define NCOUNT 16
-
 #define MAX_LEN 128
+#define DEVICE_NAME "display7s" /* Device name */
 
 /* Indices of GPIOs used by this module */
 enum
@@ -56,27 +58,37 @@ enum
 /* Pin numbers */
 const int display_gpio[NR_GPIO_DISPLAY] = {18, 23, 24};
 
+/* Sequence of segments used by the character device driver */
+const int sequence[] = {DS_D, DS_E, DS_F, DS_A, DS_B, DS_C, DS_G, DS_DP, -1};
+
+// Lista de todas las representaciones de números en 7segment(tamaño=16)
+const int sequenceN[] = {N0, N1, N2, N3, N4, N5, N6, N7, N8, N9, NA, NB, NC, ND, NE, NF};
+
+// Contador del número de procesos que están accediendo al dispositivo
+static short Open_Dev = 0;
+
+DEFINE_MUTEX(openDev);
+
 /* Array to hold GPIO descriptors */
 struct gpio_desc *gpio_descriptors[NR_GPIO_DISPLAY];
 
 const char *display_gpio_str[NR_GPIO_DISPLAY] = {"sdi", "rclk", "srclk"};
 
-/* Sequence of segments used by the character device driver */
-const int sequence[] = {DS_D, DS_E, DS_F, DS_A, DS_B, DS_C, DS_G, DS_DP, -1};
-
-//Lista de todas las representaciones de números en 7segment(tamaño=16)
-const int sequenceN[] = {N0, N1, N2,N3, N4, N5, N6, N7, N8, N9, NA, NB, NC, ND, NE, NF};
-#define DEVICE_NAME "display7s" /* Device name */
-
 /*
  *  Prototypes
  */
-static ssize_t display7s_write(struct file *, const char *, size_t, loff_t *);
+static int __init display7s_misc_init(void);
+static int display7s_open(struct inode *inode, struct file *file);
+static ssize_t display7s_write(struct file *filp, const char *buff, size_t len, loff_t *off);
+static int display7s_release(struct inode *inode, struct file *file);
+static void __exit display7s_misc_exit(void);
+static void update_7sdisplay(unsigned char data);
 
 /* Simple initialization of file_operations interface with a single operation */
 static struct file_operations fops = {
 	.write = display7s_write,
-};
+	.open = display7s_open,
+	.release = display7s_release};
 
 static struct miscdevice display7s_misc = {
 	.minor = MISC_DYNAMIC_MINOR, /* kernel dynamically assigns a free minor# */
@@ -86,69 +98,6 @@ static struct miscdevice display7s_misc = {
 	.mode = 0666,				 /* ... dev node perms set as specified here */
 	.fops = &fops,				 /* connect to this driver's 'functionality' */
 };
-
-
-/* Update the 7-segment display with the configuration specified by the data parameter */
-static void update_7sdisplay(unsigned char data)
-{
-	int i = 0;
-	int value = 0;
-
-	for (i = 0; i < SEGMENT_COUNT; i++)
-	{
-		/* Explore current bit (from most significant to least significant) */
-		if (0x80 & (data << i))
-			value = 1;
-		else
-			value = 0;
-
-		/* Set value of serial input */
-		gpiod_set_value(gpio_descriptors[SDI_IDX], value);
-		/* Generate clock cycle in shift register */
-		gpiod_set_value(gpio_descriptors[SRCLK_IDX], 1);
-		msleep(1);
-		gpiod_set_value(gpio_descriptors[SRCLK_IDX], 0);
-	}
-
-	/* Generate clock cycle in output register to update 7-seg display */
-	gpiod_set_value(gpio_descriptors[RCLK_IDX], 1);
-	msleep(1);
-	gpiod_set_value(gpio_descriptors[RCLK_IDX], 0);
-}
-
-/*
- * Called when a process writes to dev file: echo "hi" > /dev/display7s
- * Test with the following command to see the sequence better:
- * $ while true; do echo > /dev/display7s; sleep 0.3; done
- */
-static ssize_t
-display7s_write(struct file *filp, const char *buff, size_t len, loff_t *off)
-{
-	int hex_Num = 0;
-	char c[MAX_LEN + 1];
-
-	if (len > MAX_LEN)
-		return -1;
-
-	if (copy_from_user(c, buff, len))
-		return -EFAULT;
-
-	c[len] = '\0';
-
-	if(strlen(c) > 2)
-		return -EINVAL;
-
-	if(sscanf(c, "%x,", &hex_Num) != 1)
-		return -EINVAL;
-
-	if(hex_Num < 0 || hex_Num > 15)
-		return -EINVAL;
-
-	/* Update the corresponding value in the display */
-	update_7sdisplay(sequenceN[hex_Num]);
-
-	return len;
-}
 
 static int __init display7s_misc_init(void)
 {
@@ -192,6 +141,7 @@ static int __init display7s_misc_init(void)
 	}
 
 	device = display7s_misc.this_device;
+	Open_Dev = 0;
 
 	dev_info(device, "Display7s driver registered succesfully. To talk to\n");
 	dev_info(device, "the driver try to cat and echo to /dev/%s.\n", DEVICE_NAME);
@@ -202,6 +152,76 @@ err_handle:
 	for (j = 0; j < i; j++)
 		gpiod_put(gpio_descriptors[j]);
 	return err;
+}
+
+/*
+ * Called when a process tries to open the device file, like
+ * "cat /dev/display7s"
+ */
+static int display7s_open(struct inode *inode, struct file *file)
+{
+
+	mutex_lock(&openDev);
+	if (Open_Dev){
+		mutex_unlock(&openDev);
+		return -EBUSY;
+	}
+	Open_Dev++;
+	mutex_unlock(&openDev);
+
+	/* Increment the module's reference counter */
+	try_module_get(THIS_MODULE);
+	return 0;
+}
+
+/*
+ * Called when a process writes to dev file
+ * Test with the following command to see the sequence better:
+ * $ while true; do echo > /dev/display7s; sleep 0.3; done
+ */
+static ssize_t display7s_write(struct file *filp, const char *buff, size_t len, loff_t *off)
+{
+	int hex_Num = 0;
+	char c[MAX_LEN + 1];
+
+	if (len > MAX_LEN)
+		return -1;
+
+	if (copy_from_user(c, buff, len))
+		return -EFAULT;
+
+	c[len] = '\0';
+
+	if (strlen(c) > 2)
+		return -EINVAL;
+
+	if (sscanf(c, "%x,", &hex_Num) != 1)
+		return -EINVAL;
+
+	if (hex_Num < 0 || hex_Num > 15)
+		return -EINVAL;
+
+	mutex_lock(&openDev);
+
+	/* Update the corresponding value in the display */
+	update_7sdisplay(sequenceN[hex_Num]);
+	mutex_unlock(&openDev);
+
+	return len;
+}
+
+/*
+ * Called when a process closes the device file.
+ */
+static int display7s_release(struct inode *inode, struct file *file)
+{
+	mutex_lock(&openDev);
+	Open_Dev--;
+	mutex_unlock(&openDev);
+
+	module_put(THIS_MODULE);
+
+	return 0;
 }
 
 static void __exit display7s_misc_exit(void)
@@ -217,9 +237,34 @@ static void __exit display7s_misc_exit(void)
 	/* Free up pins */
 	for (i = 0; i < NR_GPIO_DISPLAY; i++)
 		gpiod_put(gpio_descriptors[i]);
-
+	mutex_destroy(&openDev);
 	pr_info("Display7s driver deregistered. Bye\n");
 }
 
-module_init(display7s_misc_init);
-module_exit(display7s_misc_exit);
+/* Update the 7-segment display with the configuration specified by the data parameter */
+static void update_7sdisplay(unsigned char data)
+{
+	int i = 0;
+	int value = 0;
+
+	for (i = 0; i < SEGMENT_COUNT; i++)
+	{
+		/* Explore current bit (from most significant to least significant) */
+		if (0x80 & (data << i))
+			value = 1;
+		else
+			value = 0;
+
+		/* Set value of serial input */
+		gpiod_set_value(gpio_descriptors[SDI_IDX], value);
+		/* Generate clock cycle in shift register */
+		gpiod_set_value(gpio_descriptors[SRCLK_IDX], 1);
+		msleep(1);
+		gpiod_set_value(gpio_descriptors[SRCLK_IDX], 0);
+	}
+
+	/* Generate clock cycle in output register to update 7-seg display */
+	gpiod_set_value(gpio_descriptors[RCLK_IDX], 1);
+	msleep(1);
+	gpiod_set_value(gpio_descriptors[RCLK_IDX], 0);
+}
