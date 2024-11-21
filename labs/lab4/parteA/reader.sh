@@ -1,3 +1,4 @@
+#/bin/bash
 while true
 do
 	for ((i=0;$i <= 1;i++))

@@ -1,4 +1,4 @@
-obj-m +=  modlist.o
+obj-m +=  modlist-smp.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
