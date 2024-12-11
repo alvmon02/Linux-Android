@@ -324,15 +324,20 @@ static void __exit pwm_module_exit(void)
 //Reproducción de nota(primera) con configuración de pwm_buzzer
 static void my_wq_function(struct work_struct *work)
 {
+	printk(KERN_INFO "Accessing deferred work function\n");
+
 	struct music_step *next;
 
 	next_note = melody + (MUSIC_SIZE * played_notes);
 
+	printk(KERN_INFO "Obtaining melody with index: %i\n", played_notes);
 	if(next_note != NULL && played_notes != melody_notes)
 		next = next_note;
-	else
+	else{
+		buzzer_state = BUZZER_PAUSED;
+		next_note=NULL;
 		return;
-
+	}
 	pwm_init_state(pwm_device, &pwm_state);
 
 	/* Obtain period from frequency */
@@ -365,6 +370,10 @@ static void my_wq_function(struct work_struct *work)
 
 static void timer_signal_function(struct timer_list *timer)
 {
+	printk(KERN_INFO "Accessing timer signal function\n");
+
+	printk(KERN_INFO "state of buzzer is %i", buzzer_state);
+
 	if(buzzer_state == BUZZER_PAUSED)
 		pwm_disable(pwm_device);
 	else
@@ -374,7 +383,8 @@ static void timer_signal_function(struct timer_list *timer)
 		/* Enqueue work */
 		schedule_work(next_work);
 	}
-
+	if(next_note != NULL)
+		mod_timer(&buzzer_timer,jiffies + msecs_to_jiffies(calculate_delay_ms(next_note->len, bpm)));
 }
 
 static void create_workqueue_from_melody(void)
