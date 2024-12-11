@@ -227,27 +227,24 @@ static ssize_t buzzer_write(struct file *filp, const char *buff, size_t len, lof
 
 		next_note = melody;
 
-		i = 1;
+		i = 0;
 		next_work = my_work_list;
+		printk(KERN_INFO "Cantidad de Notes %i \n",notes);
+
 		while(i < notes && next_work != NULL)
 		{
 			INIT_WORK(next_work, my_wq_function);
 
-			printk(KERN_INFO "Trabajo %i cargado \n",i);
+			/* Enqueue work */
 			schedule_work(next_work);
 
 			i++;
-			if(i < notes)
-			{
+			if(i >= notes)
+				next_work = NULL;
+			else
 				next_work = my_work_list + (i * WORK_SIZE);
-				//next_work++;
 
-			}
 		}
-
-		/* Enqueue work */
-		//schedule_work(&my_work);
-
 	}
 	return len;
 }
