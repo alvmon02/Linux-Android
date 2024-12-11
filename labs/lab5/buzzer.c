@@ -29,7 +29,7 @@ MODULE_LICENSE("GPL");
 
 #define MAX_LEN 256
 #define WORK_SIZE (sizeof(struct work_struct))
-
+#define MUSIC_SIZE (sizeof(struct music_step))
 
 /* Structure to represent a note or rest in a melodic line  */
 struct music_step
@@ -68,9 +68,8 @@ static buzzer_request_t buzzer_request=REQUEST_NONE;
 
 struct music_step *melody = NULL,
 				  *next_note = NULL;/* Puntero a la siguiente nota de la melodía actual (solo alterado por tarea diferida) */
+int played_notes=0, melody_notes=0;
 int bpm = 100;
-
-int workcount=0;
 
 struct timer_list buzzer_timer;	//Estrucutura para definir el Kernel Timer
 
@@ -134,6 +133,7 @@ static int __init pwm_module_init(void)
 		//Asignación de memoria para melodía y siguiente nota
 		melody = vmalloc(PAGE_SIZE);
 		next_note = melody;
+		melody_notes = 0;
 		//next_note = kmalloc(sizeof(struct music_step),GFP_KERNEL);
 
 		//Creación del timer
@@ -207,7 +207,6 @@ static ssize_t buzzer_write(struct file *filp, const char *buff, size_t len, lof
 		*c2 = NULL;
 
 	int beat = 0,
-		notes = 0,	//Contains the amount of notes the melody has
 		freq = 0,
 		len_note = 0,
 		i = 0;
@@ -221,6 +220,7 @@ static ssize_t buzzer_write(struct file *filp, const char *buff, size_t len, lof
 
 	if(sscanf(c, "music %s", c2) == 1)
 	{
+		melody_notes = 0;
 		printk(KERN_INFO "Music Reading\n");
 
 		c1 = strsep(&c2,",");
@@ -229,49 +229,48 @@ static ssize_t buzzer_write(struct file *filp, const char *buff, size_t len, lof
 			printk(KERN_INFO "Element: %s\n",c1);
 
 			sscanf(c1,"%i:%x", &freq, &len_note);
-			melody[notes].freq = freq;
-			melody[notes].len = len_note;
+			melody[melody_notes].freq = freq;
+			melody[melody_notes].len = len_note;
 
-			printk(KERN_INFO "Nota: %i\n",melody[notes].freq);
-			printk(KERN_INFO "Tiempo: %i\n",melody[notes].len);
+			//printk(KERN_INFO "Nota: %i\n",melody[notes].freq);
+			//printk(KERN_INFO "Tiempo: %i\n",melody[notes].len);
 
 			c1 = strsep(&c2,",");
 
-			notes++;
+			melody_notes++;
 		}
-
-		my_work_list = kmalloc(WORK_SIZE * notes, GFP_KERNEL);
 	}
 	else if(sscanf(c, "beat %i", &beat) == 1)
 		bpm = beat;
-
-	kfree(c2);
-
-	if(my_work_list)
+	else if(sscanf(c, "start %i", &beat) == 1)//ONLY FOR EXPERIMENT, MUST CHANGE TO BUTTON
 	{
-		pwm_init_state(pwm_device, &pwm_state);
-
-		next_note = melody;
-
-		i = 0;
-		next_work = my_work_list;
-		printk(KERN_INFO "Cantidad de Notes %i \n",notes);
-
-		while(i < notes && next_work != NULL)
+		my_work_list = kmalloc(WORK_SIZE, GFP_KERNEL);
+		if(my_work_list)
 		{
+			next_note = melody;
+
+			//i = 0;
+			next_work = my_work_list;
+			//printk(KERN_INFO "Cantidad de Notes %i \n",notes);
+
+			//while(i < notes && next_work != NULL){
 			INIT_WORK(next_work, my_wq_function);
 
 			/* Enqueue work */
 			schedule_work(next_work);
 
-			i++;
-			if(i >= notes)
-				next_work = NULL;
-			else
-				next_work = my_work_list + (i * WORK_SIZE);
+				//i++;
+				//if(i >= notes)
+					//next_work = NULL;
+				//else
+				//	next_work = my_work_list + (i * WORK_SIZE);
 
+				//}
 		}
 	}
+
+	kfree(c2);
+
 	return len;
 }
 
@@ -318,21 +317,28 @@ static void __exit pwm_module_exit(void)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
 /* Work's handler function */
+
+
+//Reproducción de nota(primera) con configuración de pwm_buzzer
 static void my_wq_function(struct work_struct *work)
 {
-	printk(KERN_INFO "This is one work execution, number: %i\n",workcount);
-	workcount++;
-}
-static void my_wq_function2(struct work_struct *work)
-{
+	printk(KERN_INFO "Accessing deferred work function\n");
+
 	struct music_step *next;
 
-	if(next_note != NULL)
-		next = next_note;
-	else
-		return;
+	next_note = melody + (MUSIC_SIZE * played_notes);
 
+	printk(KERN_INFO "Obtaining melody with index: %i\n", played_notes);
+	if(next_note != NULL && played_notes != melody_notes)
+		next = next_note;
+	else{
+		buzzer_state = BUZZER_PAUSED;
+		next_note=NULL;
+		return;
+	}
+	pwm_init_state(pwm_device, &pwm_state);
 
 	/* Obtain period from frequency */
 	pwm_state.period = freq_to_period_ns(next->freq);
@@ -356,18 +362,74 @@ static void my_wq_function2(struct work_struct *work)
 		pwm_disable(pwm_device);
 	}
 
-	//TODO MODTIMER
-	//mod_timer(buzzer_timer,jiffies + msecs_to_jiffies(calculate_delay_ms(next->len, beat)));
-	next_note++;
-	//msleep();
+	played_notes++;
+
+	//MODTIMER que expira cuando la duración de la nota finaliza
+	mod_timer(&buzzer_timer,jiffies + msecs_to_jiffies(calculate_delay_ms(next->len, bpm)));
 }
 
 static void timer_signal_function(struct timer_list *timer)
 {
-	//pwm_disable(pwm_device);
-	printk(KERN_INFO "HELLO WORLD Timer Signal!!\n");
+	printk(KERN_INFO "Accessing timer signal function\n");
+
+	printk(KERN_INFO "state of buzzer is %i", buzzer_state);
+
+	if(buzzer_state == BUZZER_PAUSED)
+		pwm_disable(pwm_device);
+	else
+	{
+		INIT_WORK(next_work, my_wq_function);
+
+		/* Enqueue work */
+		schedule_work(next_work);
+	}
+	if(next_note != NULL)
+		mod_timer(&buzzer_timer,jiffies + msecs_to_jiffies(calculate_delay_ms(next_note->len, bpm)));
 }
 
+static void create_workqueue_from_melody(void)
+{
+	int i = 0;
+
+	if(melody_notes == 0)
+		return;
+
+	my_work_list = kmalloc(WORK_SIZE * melody_notes, GFP_KERNEL);
+
+	if(my_work_list)
+	{
+		pwm_init_state(pwm_device, &pwm_state);
+
+		next_note = melody;
+
+		i = 0;
+		next_work = my_work_list;
+		printk(KERN_INFO "Cantidad de Notes %i \n",melody_notes);
+
+		while(i < melody_notes && next_work != NULL)
+		{
+			INIT_WORK(next_work, my_wq_function);
+
+			/* Enqueue work */
+			schedule_work(next_work);
+
+			i++;
+			if(i >= melody_notes)
+				next_work = NULL;
+			else
+				next_work = my_work_list + (i * WORK_SIZE);
+
+		}
+	}
+
+}
+//Función de pulsador que ejecutará la primera(única?) tarea diferida
+static void pulsar_button(void)
+{
+	create_workqueue_from_melody();
+
+	schedule_work(next_work);
+}
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /**
