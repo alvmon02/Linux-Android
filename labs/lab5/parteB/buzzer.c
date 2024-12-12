@@ -140,16 +140,65 @@ static int __init pwm_module_init(void)
 		timer_setup(&buzzer_timer, timer_signal_function, 0);
 		//buzzer_time.expires = jiffies + (HZ * 1);	//Comenzar el Timer un segundo después de carga(Posiblemente innecesario)
 
-		//Activar el timer por primera vez(A lo mejor innecesario?)
+		//Activar el timer por primera vez
 		add_timer(&buzzer_timer);
+
+
+  /* Requesting Button's GPIO */
+  if ((err = gpio_request(GPIO_BUTTON, "button"))) {
+    pr_err("ERROR: GPIO %d request\n", GPIO_BUTTON);
+    goto err_handle;
+  }
+
+  /* Configure Button */
+  if (!(desc_button = gpio_to_desc(GPIO_BUTTON))) {
+    pr_err("GPIO %d is not valid\n", GPIO_BUTTON);
+    err = -EINVAL;
+    goto err_handle;
+  }
+
+  gpio_out_ok = 1;
+
+  //configure the BUTTON GPIO as input
+  gpiod_direction_input(desc_button);
+
+  /*
+  ** The lines below are commented because gpiod_set_debounce is not supported
+  ** in the Raspberry pi. Debounce is handled manually in this driver.
+  */
+#ifndef MANUAL_DEBOUNCE
+  //Debounce the button with a delay of 200ms
+  if (gpiod_set_debounce(desc_button, 200) < 0) {
+    pr_err("ERROR: gpio_set_debounce - %d\n", GPIO_BUTTON);
+    goto err_handle;
+  }
+#endif
+
+  //Get the IRQ number for our GPIO
+  gpio_button_irqn = gpiod_to_irq(desc_button);
+  pr_info("IRQ Number = %d\n", gpio_button_irqn);
+
+  if (request_irq(gpio_button_irqn,             //IRQ number
+                  gpio_irq_handler,   //IRQ handler
+                  IRQF_TRIGGER_RISING,        //Handler will be called in raising edge
+                  "button_leds",               //used to identify the device name using this IRQ
+                  NULL)) {                    //device id for shared IRQ
+    pr_err("my_device: cannot register IRQ ");
+    goto err_handle;
+  }
+
 
 		dev_info(device, "Buzzer driver registered succesfully. To talk to\n");
 		dev_info(device, "the driver try to cat and echo to /dev/%s.\n", BUZZER_DEVICE_NAME);
 		dev_info(device, "Remove the module when done.\n");
+
 	}
 	
 	return 0;
 err_handle:
+  if (gpio_out_ok)
+    gpiod_put(desc_button);
+
 	return err;
 }
 
