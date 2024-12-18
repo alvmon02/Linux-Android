@@ -11,8 +11,10 @@
 #define STEPS 3
 
 static int timer_period_ms = 1000;
+
 /* module_param(myint, int, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH); */
 module_param(timer_period_ms, int, 0000);
+
 MODULE_PARM_DESC(timer_period_ms, "Timer period in ms");
 struct timer_list my_timer; /* Structure that describes the kernel timer */
 
@@ -27,6 +29,8 @@ struct work_struct my_work;
 #define LED3 0b001
 
 DEFINE_SPINLOCK(sp);
+
+static spinlock_t lock;
 
 #define MANUAL_DEBOUNCE
 
@@ -52,14 +56,15 @@ static inline int set_pi_leds(unsigned int mask) {
     return 0;
 }
 
-static void my_wq(struct work_struct *work)
-{
+static void my_wq(struct work_struct *work) {
 	del_timer_sync(&my_timer);
 }
 
 /* Interrupt handler for button **/
 static irqreturn_t gpio_irq_handler(int irq, void* dev_id)
 {
+	unsigned long int flags = 0;
+
 #ifdef MANUAL_DEBOUNCE
     static unsigned long last_interrupt = 0;
     unsigned long diff = jiffies - last_interrupt;
@@ -69,21 +74,21 @@ static irqreturn_t gpio_irq_handler(int irq, void* dev_id)
     last_interrupt = jiffies;
 #endif
 
-	printk(KERN_INFO "PRESS W1\n");
+	//printk(KERN_INFO "PRESS W1\n");
 
-	spin_lock_irq(&sp);
+	spin_lock_irqsave(&lock,flags);
     if(sequence_working)// Tiene que mandar una tarea diferida que sea quien haga del_timer_sync()
     {
     	sequence_working = 0;
     	schedule_work(&my_work);
 
     }
-    else     // Tiene que volver a activar el timer creo que eso si se puede hacer aquí
-	{
+    else     // Tiene que volver a activar el timer creo que eso si se puede hacer aquÃ­
+    {
 		sequence_working = 1;
-		mod_timer(&my_timer, jiffies + ((timer_period_ms / 1000) * HZ));
+		mod_timer(&my_timer, jiffies + msecs_to_jiffies(timer_period_ms));
 	}
-	spin_unlock_irq(&sp);
+	spin_unlock_irqrestore(&lock,flags);
     return IRQ_HANDLED;
 }
 
@@ -162,7 +167,7 @@ static int __init gpioint_init(void)
 
     /* Create timer */
     timer_setup(&my_timer, fire_timer, 0);
-    my_timer.expires = jiffies + ((timer_period_ms / 1000) * HZ); /* Activate it timer_period_ms from now */
+    my_timer.expires = jiffies + msecs_to_jiffies(timer_period_ms); /* Activate it timer_period_ms from now */
     /* Activate the timer for the first time */
     add_timer(&my_timer);
 
@@ -202,7 +207,7 @@ static void fire_timer(struct timer_list* timer)
     cont++;
 
     /* Re-activate the timer one second from now */
-    mod_timer(timer, jiffies + ((timer_period_ms / 1000) * HZ));
+    mod_timer(timer, jiffies + (msecs_to_jiffies(timer_period_ms)));
 }
 
 static void __exit gpioint_exit(void) {
