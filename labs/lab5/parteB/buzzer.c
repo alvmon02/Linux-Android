@@ -19,7 +19,6 @@
 #include <linux/timer.h>
 #include <linux/jiffies.h>
 #include <linux/interrupt.h>
-
 #include <asm/atomic.h>
 
 MODULE_DESCRIPTION("Buzzer Kernel Module - FDI-UCM");
@@ -29,6 +28,7 @@ MODULE_LICENSE("GPL");
 #define BUZZER_DEVICE_NAME "buzzer"
 
 #define MAX_LEN 2048
+#define MAX_LEN_READ 128
 #define WORK_SIZE (sizeof(struct work_struct))
 #define MUSIC_SIZE (sizeof(struct music_step))
 
@@ -82,18 +82,22 @@ static int gpio_button_irqn = -1;
 DEFINE_SPINLOCK(sp);
 
 // Preprocessors(functions/procedures)
+
 static int __init pwm_module_init(void);
-static inline unsigned int freq_to_period_ns(unsigned int frequency);
-static inline int is_end_marker(struct music_step *step);
-static inline int calculate_delay_ms(unsigned int note_len, unsigned int qnote_ref);
-static void my_wq_function(struct work_struct *work);
-static void __exit pwm_module_exit(void);
 static int buzzer_open(struct inode *inode, struct file *file);
 static ssize_t buzzer_write(struct file *filp, const char *buff, size_t len, loff_t *off);
 static ssize_t buzzer_read(struct file *filp, char __user *buf, size_t len, loff_t *off);
 static int buzzer_release(struct inode *inode, struct file *file);
+static void __exit pwm_module_exit(void);
+
+static void my_wq_function(struct work_struct *work);
 static void timer_signal_function(struct timer_list *timer);
 static irqreturn_t gpio_irq_handler(int irq, void *dev_id);
+
+static void load_default_melody(void);
+static inline unsigned int freq_to_period_ns(unsigned int frequency);
+static inline int calculate_delay_ms(unsigned int note_len, unsigned int qnote_ref);
+static inline int is_end_marker(struct music_step *step);
 
 /* Simple initialization of file_operations interface with a single operation */
 static struct file_operations fops = {
@@ -129,8 +133,6 @@ static int __init pwm_module_init(void)
 	err = misc_register(&buzzer_misc);
 	my_workqueue = create_workqueue("notes_queue");
 
-
-
 	if(my_workqueue)
 	{
 		if (err) {
@@ -140,20 +142,16 @@ static int __init pwm_module_init(void)
 	
 		device = buzzer_misc.this_device;
 	
-		//Asignación de memoria para melodía y siguiente nota
+			//Asignación de memoria para melodía y siguiente nota
 		melody = vmalloc(PAGE_SIZE);
-		//next_note = melody;
-		next_note = NULL,
+		next_note = NULL;
 		melody_notes = 0;
-		//next_note = kmalloc(sizeof(struct music_step),GFP_KERNEL);
+		
+		load_default_melody();
 
-		//Creación del timer
+			//Creación del timer
 		timer_setup(&buzzer_timer, timer_signal_function, 0);
-		//buzzer_time.expires = jiffies + (HZ * 1);	//Comenzar el Timer un segundo después de carga(Posiblemente innecesario)
-		//pwm_init_state(pwm_device, &pwm_state);
-		//Activar el timer por primera vez
-		//add_timer(&buzzer_timer);
-
+	
 		/* Requesting Button's GPIO */
 		if ((err = gpio_request(GPIO_BUTTON, "button"))) {
 			pr_err("ERROR: GPIO %d request\n", GPIO_BUTTON);
@@ -169,7 +167,7 @@ static int __init pwm_module_init(void)
 
 		gpio_out_ok = 1;
 
-		//configure the BUTTON GPIO as input
+			//configure the BUTTON GPIO as input
 		gpiod_direction_input(desc_button);
 
 		/*
@@ -178,7 +176,7 @@ static int __init pwm_module_init(void)
 		*/
 
 		#ifndef MANUAL_DEBOUNCE
-		//Debounce the button with a delay of 200ms
+			//Debounce the button with a delay of 200ms
 		if (gpiod_set_debounce(desc_button, 200) < 0) {
 			pr_err("ERROR: gpio_set_debounce - %d\n", GPIO_BUTTON);
 			goto err_handle;
@@ -211,11 +209,13 @@ static int __init pwm_module_init(void)
 	}
 	
 	return 0;
+	
 err_handle:
   if (gpio_out_ok)
     gpiod_put(desc_button);
 
 	return err;
+
 }
 
 /*
@@ -234,7 +234,7 @@ static int buzzer_open(struct inode *inode, struct file *file){
  */
 static ssize_t buzzer_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
 {
-	char c[MAX_LEN + 1];
+	char c[MAX_LEN_READ + 1];
 	int nr_bytes = 0;
 
 	if((*off) > 0)
@@ -255,57 +255,70 @@ static ssize_t buzzer_read(struct file *filp, char __user *buf, size_t len, loff
  */
 static ssize_t buzzer_write(struct file *filp, const char *buff, size_t len, loff_t *off)
 {
-	char c[MAX_LEN + 1],
-		*c1,
-		*c2 = NULL;
+	char *c = NULL,
+		 *c1,
+		 *c2 = NULL;
 	unsigned long int flags = 0;
 	int beat = 0,
 		freq = 0,
 		len_note = 0;
 
-	if (copy_from_user(c, buff, len))
+	c = kmalloc(MAX_LEN + 1,GFP_KERNEL);
+
+
+	if ((c != NULL) && copy_from_user(c, buff, len))
 		return -EFAULT;
 
 	c[len] = '\0';
+
 
 	c2 = kmalloc(MAX_LEN + 1,GFP_KERNEL);
 
 	if(sscanf(c, "music %s", c2) == 1)
 	{
 		spin_lock_irqsave(&lock, flags);
-		buzzer_request = REQUEST_CONFIG;
 
+		if(buzzer_state == BUZZER_PLAYING){
+			spin_unlock_irqrestore(&lock, flags);
+			kfree(c);
+			kfree(c2);
+			return -EBUSY;
+		}
+
+
+		buzzer_request = REQUEST_CONFIG;
 		melody_notes = 0;
-		printk(KERN_INFO "Music Reading\n");
+		//printk(KERN_INFO "Music Reading\n");
 
 		c1 = strsep(&c2,",");
 		while(c1 != NULL)
 		{
-			printk(KERN_INFO "Element: %s\n",c1);
+			//printk(KERN_INFO "Element: %s\n",c1);
 
 			sscanf(c1,"%i:%x", &freq, &len_note);
 			melody[melody_notes].freq = freq;
 			melody[melody_notes].len = len_note;
 
-			//next_note = melody + (MUSIC_SIZE * melody_notes);
-
 			//printk(KERN_INFO "Nota: %i\n",melody[melody_notes].freq);
 			//printk(KERN_INFO "Tiempo: %i\n",melody[melody_notes].len);
-			//printk(KERN_INFO "Nota(P): %i\n",next_note->freq);
-			//printk(KERN_INFO "Tiempo(T): %i\n",next_note->len);
 
 			c1 = strsep(&c2,",");
 
 			melody_notes++;
 		}
 
-		//next_note = NULL;
+		played_notes = 0;
+
+		schedule_work(&my_work);
 
 		spin_unlock_irqrestore(&lock, flags);
 	}
-	else if(sscanf(c, "beat %i", &beat) == 1)
+	else if(sscanf(c, "beat %i", &beat) == 1) {
+		spin_lock_irqsave(&lock, flags);
 		bpm = beat;
-
+		spin_unlock_irqrestore(&lock, flags);
+	}
+	kfree(c);
 	kfree(c2);
 
 	return len;
@@ -323,9 +336,10 @@ static int buzzer_release(struct inode *inode, struct file *file){
 
 static void __exit pwm_module_exit(void)
 {
+	misc_deregister(&buzzer_misc);
 
+		/* Release of the button */
 	free_irq(gpio_button_irqn, NULL);
-	gpiod_put(desc_button);
 
 	/* Wait until defferred work has finished */
 	flush_workqueue(my_workqueue);
@@ -335,15 +349,13 @@ static void __exit pwm_module_exit(void)
 	del_timer_sync(&buzzer_timer);
 
 
-	pwm_disable(pwm_device);
 	/* Release PWM device */
+	pwm_disable(pwm_device);
 	pwm_free(pwm_device);
 
-	misc_deregister(&buzzer_misc);
+	gpiod_put(desc_button);
 
 	vfree(melody);
-
-	//kfree(next_note);
 
 	printk(KERN_INFO "Module extracted Successfully\n");
 }
@@ -352,123 +364,101 @@ static void __exit pwm_module_exit(void)
 
 
 /* Work's handler function */
-
-
-//Reproducción de nota(primera) con configuración de pwm_buzzer
 static void my_wq_function(struct work_struct *work)
 {
+	unsigned long int flags = 0;
+	//printk(KERN_INFO "Accessing deferred work function\n");
 
-	static struct music_step *next;
-	printk(KERN_INFO "Accessing deferred work function\n");
-
-	if(buzzer_request == REQUEST_START){
-		printk(KERN_INFO "START REQUESTED\n");
-		buzzer_state = BUZZER_PLAYING;
-	}
-	spin_lock(&sp);
-
-	next_note = &melody[played_notes]; //+ (MUSIC_SIZE); // played_notes);
-	spin_unlock(&sp);
-
-	printk(KERN_INFO "Note to play: %i,\nWith duration: %i\n",next_note->freq,next_note->len);
-
-	//printk(KERN_INFO "Obtaining melody with index: %i\n", played_notes);
-
-	if(next_note != NULL && played_notes < melody_notes){
-		next = next_note;
-		//printk(KERN_INFO "first if\n");
-
-	}
-	else if(played_notes == melody_notes){
-		//printk(KERN_INFO "second if\n");
-		buzzer_state = BUZZER_STOPPED;
+	spin_lock_irqsave(&lock, flags);
+	if(buzzer_request == REQUEST_CONFIG){
 		buzzer_request = REQUEST_NONE;
-		next_note=NULL;
-		played_notes = 0;
-		pwm_disable(pwm_device);
+		buzzer_state = BUZZER_STOPPED;
+		spin_unlock_irqrestore(&lock, flags);
 		return;
 	}
 	else if(buzzer_request == REQUEST_PAUSE)
 	{
-		//printk(KERN_INFO "third if\n");
-
 		buzzer_state = BUZZER_PAUSED;
+		buzzer_request = REQUEST_NONE;
 		pwm_disable(pwm_device);
+		spin_unlock_irqrestore(&lock, flags);
 		return;
 	}
-	else{
-		printk(KERN_INFO "NOTE NOT ASSIGNED\n");
-		next = NULL;
+	else if(buzzer_request == REQUEST_START){
+		buzzer_state = BUZZER_PLAYING;
+	}
+	else if(buzzer_request == REQUEST_RESUME)
+		buzzer_state = BUZZER_PLAYING;
+
+	buzzer_request = REQUEST_NONE;
+
+
+	if(played_notes >= melody_notes){
+
+		buzzer_state = BUZZER_STOPPED;
+		pwm_disable(pwm_device);
+		spin_unlock_irqrestore(&lock, flags);
 		return;
 	}
 
-	//else
-	//{
-		spin_lock(&sp);
+	next_note = &melody[played_notes];
 
-		pwm_init_state(pwm_device, &pwm_state);
+	spin_unlock_irqrestore(&lock, flags);
 
-		pwm_enable(pwm_device);
+	//printk(KERN_INFO "Note to play: %i,\nWith duration: %i\n",next_note->freq,next_note->len);
+
+	pwm_init_state(pwm_device, &pwm_state);
+
+	pwm_enable(pwm_device);
 
 		/* Obtain period from frequency */
-		pwm_state.period = freq_to_period_ns(next->freq);
-
-		/**
-		 * Disable temporarily to allow repeating the same consecutive
-		 * notes in the melodic line
-		 **/
-		//pwm_disable(pwm_device);
+	pwm_state.period = freq_to_period_ns(next_note->freq);
 
 		/* If period==0, its a rest (silent note) */
-		if (pwm_state.period > 0)
-		{
-			/* Set duty cycle to 70 to maintain the same timbre */
-			pwm_set_relative_duty_cycle(&pwm_state, 70, 100);
-			pwm_state.enabled = true;
-			/* Apply state */
-			pwm_apply_state(pwm_device, &pwm_state);
-		}
-		else {	/* Disable for rest */
-			pwm_disable(pwm_device);
-		}
+	if (pwm_state.period > 0)
+	{
+		/* Set duty cycle to 70 to maintain the same timbre */
+		pwm_set_relative_duty_cycle(&pwm_state, 70, 100);
+		pwm_state.enabled = true;
+		/* Apply state */
+		pwm_apply_state(pwm_device, &pwm_state);
+	}
+	else {	/* Disable for rest */
+		pwm_disable(pwm_device);
+	}
 
-		played_notes++;
-
-
-		//spin_lock(&sp);
-		spin_unlock(&sp);
-	//}
-
-	//MODTIMER que expira cuando la duración de la nota finaliza
-	mod_timer(&buzzer_timer,jiffies + msecs_to_jiffies(calculate_delay_ms(next->len, bpm)));
+		//MODTIMER que expira cuando la duración de la nota finaliza
+	mod_timer(&buzzer_timer,jiffies + msecs_to_jiffies(calculate_delay_ms(next_note->len, bpm)));
 }
 
 static void timer_signal_function(struct timer_list *timer)
 {
+	unsigned long int flags = 0;
+
 	//printk(KERN_INFO "Accessing timer signal function\n");
 
 	//printk(KERN_INFO "state of buzzer is %i", buzzer_state);
+
+	spin_lock_irqsave(&lock, flags);
 
 	if(buzzer_state == BUZZER_STOPPED && buzzer_request== REQUEST_START){
 		//printk(KERN_INFO "First entrance to timer Funct\n");
 		schedule_work(&my_work);
 	}
-	if(buzzer_state == BUZZER_PAUSED && buzzer_request== REQUEST_RESUME){
+	else if(buzzer_state == BUZZER_PAUSED && buzzer_request== REQUEST_RESUME){
 		schedule_work(&my_work);
 	}
 	else if(buzzer_state == BUZZER_PLAYING){
-		buzzer_request = REQUEST_NONE;
+		played_notes++;
 		schedule_work(&my_work);
 	}
-
-
-	//if(next_note != NULL && buzzer_state !=BUZZER_STOPPED)
-	if(next_note != NULL)
-		mod_timer(&buzzer_timer,jiffies + msecs_to_jiffies(calculate_delay_ms(next_note->len, bpm)));
+	spin_unlock_irqrestore(&lock, flags);
 }
 
 static irqreturn_t gpio_irq_handler(int irq, void *dev_id)
 {
+	unsigned long int flags = 0;
+
 	#ifdef MANUAL_DEBOUNCE
 	static unsigned long last_interrupt = 0;
 	unsigned long diff = jiffies - last_interrupt;
@@ -479,8 +469,14 @@ static irqreturn_t gpio_irq_handler(int irq, void *dev_id)
 	last_interrupt = jiffies;
 	#endif
 
+	spin_lock_irqsave(&lock, flags);
+
+	if(buzzer_request == REQUEST_CONFIG){
+		spin_unlock_irqrestore(&lock, flags);
+		printk(KERN_INFO "Configuring melody, please try again later\n");
+		return IRQ_HANDLED;
+	}
 	if(buzzer_state == BUZZER_STOPPED){
-		//printk(KERN_INFO "BUTTON PRESSED FOR THE FIRST TIME, START REQUESTED\n");
 		played_notes = 0;
 		buzzer_request = REQUEST_START;
 	}
@@ -490,10 +486,12 @@ static irqreturn_t gpio_irq_handler(int irq, void *dev_id)
 	else{	//BUZZER_PAUSED
 		buzzer_request = REQUEST_RESUME;
 	}
+	spin_unlock_irqrestore(&lock, flags);
 
-	mod_timer(&buzzer_timer,jiffies + HZ);
+	mod_timer(&buzzer_timer,jiffies);
 
-	printk(KERN_INFO "Button has been pressed\n");
+	//printk(KERN_INFO "Button has been pressed\n");
+
 	return IRQ_HANDLED;
 }
 
@@ -509,6 +507,26 @@ static inline unsigned int freq_to_period_ns(unsigned int frequency)
 		return DIV_ROUND_CLOSEST_ULL(100000000000UL, frequency);
 }
 
+static void load_default_melody(void)
+{
+	int C4 = 26163,
+		E4 =32963,
+		G4 = 39200,
+		C5 = 52325;
+
+	struct music_step melodic_line[] = {
+		{C4, 4}, {E4, 4}, {G4, 4}, {C5, 4}, {0, 2}, {C5, 4}, {G4, 4}, {E4, 4}, {C4, 4}, {0, 0} /* Terminator */
+	};
+
+	struct music_step *to_load;
+	for (to_load = melodic_line; !is_end_marker(to_load); to_load++)
+	{
+		melody[melody_notes].freq = to_load->freq;
+		melody[melody_notes].len = to_load->len;
+
+		melody_notes++;
+	}
+}
 /**
  * Función auxiliar de tiempo
  * Transform note length into ms,
